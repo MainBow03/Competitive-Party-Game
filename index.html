@@ -309,14 +309,24 @@
         function App() {
             const [user, setUser] = useState(null);
             const [userStats, setUserStats] = useState(null);
-            const [playerName, setPlayerName] = useState('');
+            const [playerName, setPlayerName] = useState(localStorage.getItem('arenaPlayerName') || '');
             const [uiState, setUiState] = useState('LOADING'); 
             const [joinCode, setJoinCode] = useState('');
             const [errorMsg, setErrorMsg] = useState('');
             const [rouletteIds, setRouletteIds] = useState([]);
             const [myRRChange, setMyRRChange] = useState(null);
-            const [simonLit, setSimonLit] = useState(null); // Stato UI locale per animazioni Simon
-            const [countdownText, setCountdownText] = useState(null); // NUOVO: Stato UI per il countdown di Simon
+            const [simonLit, setSimonLit] = useState(null);
+            const [countdownText, setCountdownText] = useState(null);
+
+            // Per la gara di click (Spam Click)
+            const localClicksRef = useRef(0);
+            const lastSyncedClicksRef = useRef(0);
+            const isPlayingSpamClickRef = useRef(false);
+            const [spamClickVal, setSpamClickVal] = useState(0);
+
+            // --- NUOVI STATI LEADERBOARD ---
+            const [leaderboard, setLeaderboard] = useState([]);
+            const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
 
             const [roomId, setRoomId] = useState(null);
             const [roomData, setRoomData] = useState(null);
@@ -326,7 +336,7 @@
             const processedGamesRef = useRef(new Set());
             const arenaStartTimeRef = useRef(null);
             const handledRoundRef = useRef(-1); 
-            const botMoveCountRef = useRef(new Set()); // SET PER IA BOT!
+            const botMoveCountRef = useRef(new Set());
 
             // --- SISTEMA AUTONOMO DI SIMULAZIONE BOT (OGNI 3 ORE) ---
             useEffect(() => {
@@ -344,11 +354,9 @@
 
                         const lastRun = simSnap.data().lastRun;
                         if (now - lastRun > THREE_HOURS) {
-                            // Aggiorniamo subito il timestamp così altri giocatori online non fanno la simulazione in parallelo
                             await updateDoc(simRef, { lastRun: now });
                             console.log("Esecuzione simulazione bot in background...");
 
-                            // 1. Recupera o crea i bot
                             const botsSnap = await getDocs(collection(db, "competitive_bots"));
                             let allBots = [];
                             botsSnap.forEach(d => allBots.push({ id: d.id, ...d.data() }));
@@ -362,17 +370,13 @@
                                 await batch.commit();
                             }
 
-                            // 2. Seleziona 8 bot a caso
                             const shuffled = allBots.sort(() => 0.5 - Math.random());
                             const selectedBots = shuffled.slice(0, 8);
                             
-                            // 3. Simula la partita
                             if (selectedBots.length === 8) {
                                 const batch = writeBatch(db);
-                                // Dato che sono già mescolati, il loro indice + 1 equivale a un piazzamento casuale perfetto!
                                 selectedBots.forEach((bot, index) => {
                                     const placement = index + 1;
-                                    // Se arriva 1°, randomizziamo con quanti cuori ha vinto per l'assegnazione (max 3 per bot)
                                     const simulatedLives = placement === 1 ? Math.floor(Math.random() * 3) + 1 : 0;
                                     
                                     const rrChange = calculateRRChange(placement, simulatedLives, true);
@@ -389,7 +393,6 @@
                     }
                 };
 
-                // Controlla all'apertura del gioco e poi ogni 15 minuti mentre è aperto
                 checkAndRunSimulation();
                 const simInterval = setInterval(checkAndRunSimulation, 15 * 60 * 1000);
                 return () => clearInterval(simInterval);
@@ -398,14 +401,42 @@
             // Effetto Sonoro Simon Says
             useEffect(() => {
                 if (simonLit !== null) {
-                    playTone(SIMON_COLORS[simonLit].freq, 350); // Leggermente meno di 400ms per non accavallarsi
+                    playTone(SIMON_COLORS[simonLit].freq, 350); 
                 }
             }, [simonLit]);
 
-            // Effetto Countdown Simon Says visuale
+            // Animazione Locale Simon (Client-side) per la fase WATCH
             useEffect(() => {
                 if (roomData?.state === 'ARENA' && roomData.arena.minigame === 'SIMONSAYS' && roomData.arena.matchState === 'WAITING_ACTION') {
-                    if (roomData.arena.simonsays?.phase === 'COUNTDOWN') {
+                    const ss = roomData.arena.simonsays;
+                    if (ss && ss.phase === 'WATCH') {
+                        let step = 0;
+                        const interval = setInterval(() => {
+                            if (step < ss.sequence.length) {
+                                setSimonLit(ss.sequence[step]);
+                                setTimeout(() => setSimonLit(null), 400); 
+                                step++;
+                            } else {
+                                clearInterval(interval);
+                            }
+                        }, 800); 
+                        
+                        return () => {
+                            clearInterval(interval);
+                            setSimonLit(null);
+                        };
+                    } else {
+                        setSimonLit(null);
+                    }
+                }
+            }, [roomData?.arena?.simonsays?.phase, roomData?.arena?.simonsays?.sequence?.length, roomData?.arena?.matchState]);
+
+            // Effetto Countdown visivo per i minigiochi
+            useEffect(() => {
+                if (roomData?.state === 'ARENA' && roomData.arena.matchState === 'WAITING_ACTION') {
+                    const mg = roomData.arena.minigame;
+                    if ((mg === 'SIMONSAYS' && roomData.arena.simonsays?.phase === 'COUNTDOWN') ||
+                        (mg === 'SPAMCLICK' && roomData.arena.spamclick?.phase === 'COUNTDOWN')) {
                         setCountdownText('3');
                         const t1 = setTimeout(() => setCountdownText('2'), 1000);
                         const t2 = setTimeout(() => setCountdownText('1'), 2000);
@@ -416,7 +447,7 @@
                 } else {
                     setCountdownText(null);
                 }
-            }, [roomData?.arena?.simonsays?.phase, roomData?.arena?.matchState, roomData?.arena?.minigame, roomData?.state]);
+            }, [roomData?.arena?.simonsays?.phase, roomData?.arena?.spamclick?.phase, roomData?.arena?.matchState, roomData?.arena?.minigame, roomData?.state]);
 
 
             // 1. Auth Init & Stats Listener
@@ -447,6 +478,10 @@
                             setDoc(doc(db, "users", user.uid), { rr: 200 }, { merge: true });
                         }
                         setUserStats(data);
+                        if (data.displayName && !localStorage.getItem('arenaPlayerName')) {
+                            setPlayerName(data.displayName);
+                            localStorage.setItem('arenaPlayerName', data.displayName);
+                        }
                     } else {
                         const defaultStats = { gamesPlayed: 0, wins: 0, timePlayedSeconds: 0, characterUsage: {}, rr: 200 };
                         setDoc(doc(db, "users", user.uid), defaultStats);
@@ -455,6 +490,58 @@
                 });
                 return () => unsubStats();
             }, [user]);
+
+            // --- FETCH CLASSIFICA GLOBALE ---
+            useEffect(() => {
+                if (uiState === 'MAIN_MENU') {
+                    const fetchLeaderboard = async () => {
+                        setLoadingLeaderboard(true);
+                        try {
+                            const usersSnap = await getDocs(collection(db, "users"));
+                            const botsSnap = await getDocs(collection(db, "competitive_bots"));
+                            
+                            let allPlayers = [];
+                            
+                            usersSnap.forEach(d => {
+                                const data = d.data();
+                                if (data.displayName || data.gamesPlayed > 0) {
+                                    let favCharImg = null;
+                                    if (data.characterUsage && Object.keys(data.characterUsage).length > 0) {
+                                        const favCharId = Object.entries(data.characterUsage).sort((a,b) => b[1] - a[1])[0][0];
+                                        const charObj = CHARACTERS.find(c => c.id === favCharId);
+                                        if (charObj) favCharImg = charObj.img;
+                                    }
+                                    allPlayers.push({
+                                        id: d.id,
+                                        name: data.displayName || 'Giocatore',
+                                        rr: data.rr || 200,
+                                        img: favCharImg,
+                                        isBot: false
+                                    });
+                                }
+                            });
+                            
+                            botsSnap.forEach(d => {
+                                const data = d.data();
+                                allPlayers.push({
+                                    id: d.id,
+                                    name: d.id,
+                                    rr: data.rr || 200,
+                                    img: `https://ui-avatars.com/api/?name=${encodeURIComponent(d.id)}&background=random&color=fff`,
+                                    isBot: true
+                                });
+                            });
+                            
+                            allPlayers.sort((a, b) => b.rr - a.rr);
+                            setLeaderboard(allPlayers.slice(0, 10));
+                        } catch (e) {
+                            console.error("Errore nel recupero della classifica:", e);
+                        }
+                        setLoadingLeaderboard(false);
+                    };
+                    fetchLeaderboard();
+                }
+            }, [uiState]);
 
             // 2. Room Listener
             useEffect(() => {
@@ -541,6 +628,7 @@
                         rolls: {},
                         minesweeper: null,
                         simonsays: null,
+                        spamclick: null,
                         round: 1
                     },
                     winnerId: null
@@ -629,7 +717,6 @@
                     return;
                 }
 
-                // Logica intelligente per la scelta degli sfidanti (Massimo 2 partite di fila)
                 let availableToPick = [...alivePlayers];
                 const pickPlayer = () => {
                     let preferred = availableToPick.filter(p => (p.consecutiveMatches || 0) < 2);
@@ -643,7 +730,6 @@
                 const c1 = pickPlayer();
                 const c2 = pickPlayer();
 
-                // Aggiornamento contatore partite consecutive per tutti i giocatori vivi
                 const updatedPlayers = { ...data.players };
                 alivePlayers.forEach(p => {
                     if (p.id === c1 || p.id === c2) {
@@ -653,11 +739,12 @@
                     }
                 });
 
-                const minigameOptions = ['DICE', 'MINESWEEPER', 'SIMONSAYS'];
+                const minigameOptions = ['DICE', 'MINESWEEPER', 'SIMONSAYS', 'SPAMCLICK'];
                 const minigameType = minigameOptions[Math.floor(Math.random() * minigameOptions.length)];
                 
                 let minesweeperData = null;
                 let simonsaysData = null;
+                let spamclickData = null;
 
                 if (minigameType === 'MINESWEEPER') {
                     const board = Array(25).fill({ hasBomb: false, revealedBy: null });
@@ -676,6 +763,12 @@
                         phase: 'COUNTDOWN', 
                         progress: { [c1]: 0, [c2]: 0 }
                     };
+                } else if (minigameType === 'SPAMCLICK') {
+                    spamclickData = {
+                        phase: 'COUNTDOWN',
+                        scores: { [c1]: 0, [c2]: 0 },
+                        timeLeft: 10
+                    };
                 }
 
                 await updateRoom({
@@ -687,6 +780,7 @@
                     'arena.rolls': {},
                     'arena.minesweeper': minesweeperData,
                     'arena.simonsays': simonsaysData,
+                    'arena.spamclick': spamclickData,
                     'arena.round': (data.arena?.round || 0) + 1
                 });
             };
@@ -736,7 +830,6 @@
                         botRR = 200;
                     }
 
-                    // BOT LIFE LOGIC: In competitive, bots get 3 lives. Humans get 4.
                     const botStartingLives = roomData.config.isCompetitive ? 3 : (roomData.config.startingLives || 4);
 
                     newPlayers[botId] = {
@@ -980,13 +1073,11 @@
 
             // --- LOGICA SIMON SAYS ---
             
-            // Host gestisce Fasi e Bot per Simon
             useEffect(() => {
                 if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SIMONSAYS') return;
                 const ss = roomData.arena.simonsays;
                 if (!ss) return;
 
-                // 0. Passaggio da COUNTDOWN a WATCH
                 if (ss.phase === 'COUNTDOWN') {
                     const timer = setTimeout(() => {
                         updateRoom({ 'arena.simonsays.phase': 'WATCH' });
@@ -994,7 +1085,6 @@
                     return () => clearTimeout(timer);
                 }
 
-                // 1. Passaggio da WATCH a PLAY
                 if (ss.phase === 'WATCH') {
                     const totalWait = (ss.sequence.length * 800) + 1000;
                     const timer = setTimeout(() => {
@@ -1003,7 +1093,6 @@
                     return () => clearTimeout(timer);
                 }
 
-                // 2. Controllo Completamento Livello (Tutti hanno finito)
                 if (ss.phase === 'PLAY') {
                     const cIds = roomData.arena.challengerIds;
                     
@@ -1016,10 +1105,9 @@
                                 'arena.simonsays.progress': { [cIds[0]]: 0, [cIds[1]]: 0 }
                             });
                         }, 1000);
-                        return; // Non far giocare i bot se stiamo passando di livello
+                        return;
                     }
 
-                    // 3. Logica IA BOT con SET per sicurezza anti-sovrascrittura
                     cIds.forEach(cId => {
                         const p = roomData.players[cId];
                         const currentProg = ss.progress[cId] || 0;
@@ -1031,7 +1119,6 @@
                                 botMoveCountRef.current.add(refKey);
 
                                 setTimeout(() => {
-                                    // Se il round è già stato chiuso da un altro perdente, blocca.
                                     if (handledRoundRef.current === roomData.arena.round) return;
                                     if (roomData.arena.matchState !== 'WAITING_ACTION') return;
 
@@ -1059,7 +1146,6 @@
                 }
             }, [roomData]);
 
-            // Host controlla se c'è un perdente nel SIMON SAYS
             useEffect(() => {
                 if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SIMONSAYS') return;
 
@@ -1075,7 +1161,6 @@
                 }
             }, [roomData]);
 
-            // Giocatore Reale clicca un colore
             const clickSimonColor = async (idx) => {
                 if (roomData.arena.minigame !== 'SIMONSAYS' || roomData.arena.matchState !== 'WAITING_ACTION') return;
                 const ss = roomData.arena.simonsays;
@@ -1088,7 +1173,6 @@
                 const myProg = ss.progress[user.uid] || 0;
                 if (myProg >= ss.sequence.length || myProg < 0) return;
 
-                // Suono riprodotto localmente
                 setSimonLit(idx);
                 setTimeout(() => setSimonLit(null), 200);
 
@@ -1096,6 +1180,103 @@
                     await updateRoom({ [`arena.simonsays.progress.${user.uid}`]: myProg + 1 });
                 } else {
                     await updateRoom({ [`arena.simonsays.progress.${user.uid}`]: -1 });
+                }
+            };
+
+
+            // --- LOGICA SPAM CLICK ---
+            
+            // Host Controller per Timer e Bot
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SPAMCLICK') return;
+                const sc = roomData.arena.spamclick;
+                if (!sc) return;
+
+                if (sc.phase === 'COUNTDOWN') {
+                    const timer = setTimeout(() => {
+                        updateRoom({ 'arena.spamclick.phase': 'PLAY' });
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
+
+                if (sc.phase === 'PLAY') {
+                    const timer = setTimeout(() => {
+                        const newTime = sc.timeLeft - 1;
+                        const updates = { 'arena.spamclick.timeLeft': newTime };
+                        
+                        const cIds = roomData.arena.challengerIds;
+                        cIds.forEach(cId => {
+                            const p = roomData.players[cId];
+                            if (p && p.isBot) {
+                                const currentScore = sc.scores[cId] || 0;
+                                const clicksThisSec = Math.floor(Math.random() * 4) + 6; // 6-9 click al sec
+                                updates[`arena.spamclick.scores.${cId}`] = currentScore + clicksThisSec;
+                            }
+                        });
+
+                        if (newTime <= 0) {
+                            updates['arena.spamclick.phase'] = 'FINISHED';
+                        }
+                        
+                        updateRoom(updates);
+                    }, 1000);
+                    return () => clearTimeout(timer);
+                }
+
+                if (sc.phase === 'FINISHED' && !sc.loserId) {
+                    if (handledRoundRef.current !== roomData.arena.round) {
+                        handledRoundRef.current = roomData.arena.round;
+                        const cIds = roomData.arena.challengerIds;
+                        const s1 = sc.scores[cIds[0]] || 0;
+                        const s2 = sc.scores[cIds[1]] || 0;
+                        
+                        let loserId = null;
+                        if (s1 < s2) loserId = cIds[0];
+                        else if (s2 < s1) loserId = cIds[1];
+                        else {
+                            loserId = Math.random() > 0.5 ? cIds[0] : cIds[1];
+                        }
+                        
+                        updateRoom({ 'arena.spamclick.loserId': loserId });
+                        setTimeout(() => handleLoser(loserId, roomData.arena.round), 2500);
+                    }
+                }
+            }, [roomData]);
+
+            // Sync Clicks per il Giocatore (Background Loop)
+            useEffect(() => {
+                isPlayingSpamClickRef.current = (
+                    roomData?.arena?.minigame === 'SPAMCLICK' && 
+                    roomData?.arena?.spamclick?.phase === 'PLAY' && 
+                    roomData?.arena?.challengerIds.includes(user?.uid)
+                );
+            }, [roomData, user]);
+
+            useEffect(() => {
+                if (roomData?.arena?.minigame === 'SPAMCLICK' && roomData?.arena?.spamclick?.phase === 'COUNTDOWN') {
+                    localClicksRef.current = 0;
+                    lastSyncedClicksRef.current = 0;
+                    setSpamClickVal(0);
+                }
+            }, [roomData?.arena?.spamclick?.phase, roomData?.arena?.minigame]);
+
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    if (isPlayingSpamClickRef.current && roomId && user?.uid) {
+                        if (localClicksRef.current !== lastSyncedClicksRef.current) {
+                            lastSyncedClicksRef.current = localClicksRef.current;
+                            updateDoc(doc(db, "rooms", roomId), { [`arena.spamclick.scores.${user.uid}`]: localClicksRef.current }).catch(console.error);
+                        }
+                    }
+                }, 500);
+                return () => clearInterval(interval);
+            }, [roomId, user?.uid]);
+
+            const handleSpamClick = () => {
+                if (isPlayingSpamClickRef.current) {
+                    localClicksRef.current += 1;
+                    setSpamClickVal(v => v + 1);
+                    playTone(400 + Math.random() * 200, 50); 
                 }
             };
 
@@ -1171,7 +1352,14 @@
                                     maxLength={15}
                                 />
                                 <button 
-                                    onClick={() => playerName.trim() && setUiState('MAIN_MENU')}
+                                    onClick={() => {
+                                        if (playerName.trim()) {
+                                            const finalName = playerName.trim();
+                                            localStorage.setItem('arenaPlayerName', finalName);
+                                            setDoc(doc(db, "users", user.uid), { displayName: finalName }, { merge: true }).catch(e => console.error(e));
+                                            setUiState('MAIN_MENU');
+                                        }
+                                    }}
                                     disabled={!playerName.trim()}
                                     className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-3 px-6 rounded-xl transform transition hover:scale-105 active:scale-95 disabled:opacity-50"
                                 >Gioca Ora</button>
@@ -1179,92 +1367,135 @@
                         )}
 
                         {uiState === 'MAIN_MENU' && (
-                            <div className="flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 z-10 w-full px-4 max-w-4xl">
-                                <h2 className="text-3xl font-bold text-white mb-6 text-center">Bentornato, {playerName}!</h2>
+                            <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center animate-in slide-in-from-bottom-8 z-10 w-full px-4 max-w-6xl gap-8 pb-10">
                                 
-                                {/* DASHBOARD STATISTICHE E RANK */}
-                                {userStats && (() => {
-                                    const currentRR = userStats.rr || 0;
-                                    const rankInfo = getRank(currentRR);
-                                    const nextRank = RANKS.find(r => r.minRR > currentRR);
-                                    const progress = nextRank ? ((currentRR - rankInfo.minRR) / (nextRank.minRR - rankInfo.minRR)) * 100 : 100;
+                                {/* COLONNA SINISTRA: DASHBOARD E BOTTONI */}
+                                <div className="flex-1 w-full flex flex-col items-center lg:items-start">
+                                    <h2 className="text-3xl font-bold text-white mb-6 text-center lg:text-left">Bentornato, {playerName}!</h2>
+                                    
+                                    {/* DASHBOARD STATISTICHE E RANK */}
+                                    {userStats && (() => {
+                                        const currentRR = userStats.rr || 0;
+                                        const rankInfo = getRank(currentRR);
+                                        const nextRank = RANKS.find(r => r.minRR > currentRR);
+                                        const progress = nextRank ? ((currentRR - rankInfo.minRR) / (nextRank.minRR - rankInfo.minRR)) * 100 : 100;
 
-                                    return (
-                                        <div className="w-full mb-8 bg-slate-800/80 p-6 rounded-3xl border border-slate-600 shadow-xl backdrop-blur-sm relative overflow-hidden">
-                                            <div className="absolute -right-10 -top-10 opacity-5 pointer-events-none"><Activity className="w-40 h-40" /></div>
-                                            <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Activity className="text-yellow-400 w-5 h-5"/> Profilo & Statistiche</h3>
-                                            
-                                            {/* RANK SUMMARY */}
-                                            <div className="bg-slate-900/80 p-6 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner mb-6 w-full relative overflow-hidden">
-                                                <div className={`absolute left-4 top-1/2 -translate-y-1/2 opacity-10`}><Medal className="w-24 h-24" /></div>
-                                                <div className={`absolute right-4 top-1/2 -translate-y-1/2 opacity-10`}><Medal className="w-24 h-24" /></div>
+                                        return (
+                                            <div className="w-full mb-8 bg-slate-800/80 p-6 rounded-3xl border border-slate-600 shadow-xl backdrop-blur-sm relative overflow-hidden">
+                                                <div className="absolute -right-10 -top-10 opacity-5 pointer-events-none"><Activity className="w-40 h-40" /></div>
+                                                <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Activity className="text-yellow-400 w-5 h-5"/> Profilo & Statistiche</h3>
                                                 
-                                                <span className={`text-3xl md:text-4xl font-black ${rankInfo.text} uppercase tracking-widest drop-shadow-md z-10`}>{rankInfo.name}</span>
-                                                <span className="text-slate-300 font-bold mt-2 z-10 text-lg">{currentRR} RR</span>
-                                                
-                                                {nextRank ? (
-                                                    <div className="w-full max-w-sm bg-slate-800 rounded-full h-3 mt-4 overflow-hidden border border-slate-700 z-10 shadow-inner">
-                                                        <div className={`h-full ${rankInfo.bg} transition-all duration-1000 ease-out`} style={{width: `${progress}%`}}></div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-sm text-fuchsia-400 font-bold mt-3 z-10 uppercase tracking-widest animate-pulse">Rank Massimo Raggiunto!</span>
-                                                )}
-                                            </div>
-
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
-                                                    <Gamepad2 className="text-sky-400 mb-1 w-6 h-6"/>
-                                                    <span className="text-2xl font-black text-white">{userStats.gamesPlayed || 0}</span>
-                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Partite Giocate</span>
-                                                </div>
-                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
-                                                    <Trophy className="text-yellow-400 mb-1 w-6 h-6"/>
-                                                    <span className="text-2xl font-black text-white">{userStats.wins || 0}</span>
-                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Vittorie</span>
-                                                </div>
-                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
-                                                    <Clock className="text-emerald-400 mb-1 w-6 h-6"/>
-                                                    <span className="text-xl font-black text-white">{formatTime(userStats.timePlayedSeconds)}</span>
-                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Tempo in Gioco</span>
-                                                </div>
-                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner overflow-hidden">
-                                                    {favChar ? (
-                                                        <>
-                                                            <img src={favChar.img} className="w-8 h-8 rounded-full object-cover border-2 border-pink-400 shadow-md"/>
-                                                            <span className="text-[10px] font-black text-white truncate w-full text-center mt-1">{favChar.name}</span>
-                                                        </>
+                                                {/* RANK SUMMARY */}
+                                                <div className="bg-slate-900/80 p-6 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner mb-6 w-full relative overflow-hidden">
+                                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 opacity-10`}><Medal className="w-24 h-24" /></div>
+                                                    <div className={`absolute right-4 top-1/2 -translate-y-1/2 opacity-10`}><Medal className="w-24 h-24" /></div>
+                                                    
+                                                    <span className={`text-3xl md:text-4xl font-black ${rankInfo.text} uppercase tracking-widest drop-shadow-md z-10`}>{rankInfo.name}</span>
+                                                    <span className="text-slate-300 font-bold mt-2 z-10 text-lg">{currentRR} RR</span>
+                                                    
+                                                    {nextRank ? (
+                                                        <div className="w-full max-w-sm bg-slate-800 rounded-full h-3 mt-4 overflow-hidden border border-slate-700 z-10 shadow-inner">
+                                                            <div className={`h-full ${rankInfo.bg} transition-all duration-1000 ease-out`} style={{width: `${progress}%`}}></div>
+                                                        </div>
                                                     ) : (
-                                                        <>
-                                                            <Star className="text-pink-400 mb-1 w-6 h-6"/>
-                                                            <span className="text-xl font-black text-slate-500">-</span>
-                                                        </>
+                                                        <span className="text-sm text-fuchsia-400 font-bold mt-3 z-10 uppercase tracking-widest animate-pulse">Rank Massimo Raggiunto!</span>
                                                     )}
-                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Preferito</span>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                    <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
+                                                        <Gamepad2 className="text-sky-400 mb-1 w-6 h-6"/>
+                                                        <span className="text-2xl font-black text-white">{userStats.gamesPlayed || 0}</span>
+                                                        <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Partite Giocate</span>
+                                                    </div>
+                                                    <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
+                                                        <Trophy className="text-yellow-400 mb-1 w-6 h-6"/>
+                                                        <span className="text-2xl font-black text-white">{userStats.wins || 0}</span>
+                                                        <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Vittorie</span>
+                                                    </div>
+                                                    <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
+                                                        <Clock className="text-emerald-400 mb-1 w-6 h-6"/>
+                                                        <span className="text-xl font-black text-white">{formatTime(userStats.timePlayedSeconds)}</span>
+                                                        <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Tempo in Gioco</span>
+                                                    </div>
+                                                    <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner overflow-hidden">
+                                                        {favChar ? (
+                                                            <>
+                                                                <img src={favChar.img} className="w-8 h-8 rounded-full object-cover border-2 border-pink-400 shadow-md"/>
+                                                                <span className="text-[10px] font-black text-white truncate w-full text-center mt-1">{favChar.name}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Star className="text-pink-400 mb-1 w-6 h-6"/>
+                                                                <span className="text-xl font-black text-slate-500">-</span>
+                                                            </>
+                                                        )}
+                                                        <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Preferito</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
-                                })()}
+                                        );
+                                    })()}
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                                    <button 
-                                        onClick={() => setUiState('LOBBY_CREATE')}
-                                        className="bg-slate-800 border-2 border-yellow-500/50 p-8 rounded-3xl flex flex-col items-center justify-center group hover:-translate-y-2 transition-all shadow-xl"
-                                    >
-                                        <div className="bg-yellow-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-12 h-12 text-yellow-400" /></div>
-                                        <span className="text-xl font-bold text-white mb-2">Crea Partita</span>
-                                        <span className="text-sm text-slate-400 text-center">Ospita una stanza multiplayer</span>
-                                    </button>
-                                    <button 
-                                        onClick={() => setUiState('JOIN_MODAL')}
-                                        className="bg-slate-800 border-2 border-sky-500/50 p-8 rounded-3xl flex flex-col items-center justify-center group hover:-translate-y-2 transition-all shadow-xl"
-                                    >
-                                        <div className="bg-sky-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Hash className="w-12 h-12 text-sky-400" /></div>
-                                        <span className="text-xl font-bold text-white mb-2">Unisciti</span>
-                                        <span className="text-sm text-slate-400 text-center">Entra tramite Codice Stanza</span>
-                                    </button>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                                        <button 
+                                            onClick={() => setUiState('LOBBY_CREATE')}
+                                            className="bg-slate-800 border-2 border-yellow-500/50 p-8 rounded-3xl flex flex-col items-center justify-center group hover:-translate-y-2 transition-all shadow-xl"
+                                        >
+                                            <div className="bg-yellow-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-12 h-12 text-yellow-400" /></div>
+                                            <span className="text-xl font-bold text-white mb-2">Crea Partita</span>
+                                            <span className="text-sm text-slate-400 text-center">Ospita una stanza multiplayer</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => setUiState('JOIN_MODAL')}
+                                            className="bg-slate-800 border-2 border-sky-500/50 p-8 rounded-3xl flex flex-col items-center justify-center group hover:-translate-y-2 transition-all shadow-xl"
+                                        >
+                                            <div className="bg-sky-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Hash className="w-12 h-12 text-sky-400" /></div>
+                                            <span className="text-xl font-bold text-white mb-2">Unisciti</span>
+                                            <span className="text-sm text-slate-400 text-center">Entra tramite Codice Stanza</span>
+                                        </button>
+                                    </div>
+                                    <button onClick={() => setUiState('NAME_INPUT')} className="mt-8 text-slate-400 underline">Cambia Nome</button>
                                 </div>
-                                <button onClick={() => setUiState('NAME_INPUT')} className="mt-8 text-slate-400 underline">Cambia Nome</button>
+
+                                {/* COLONNA DESTRA: CLASSIFICA TOP 10 */}
+                                <div className="w-full lg:w-80 shrink-0 bg-slate-800/80 rounded-3xl border border-slate-600 shadow-xl backdrop-blur-sm overflow-hidden flex flex-col max-h-[600px] mt-2 lg:mt-0">
+                                    <div className="p-4 bg-slate-900/50 border-b border-slate-700 flex items-center gap-2">
+                                        <Trophy className="text-yellow-400 w-5 h-5" />
+                                        <h3 className="text-white font-bold uppercase tracking-widest text-sm">Top 10 Competitiva</h3>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+                                        {loadingLeaderboard ? (
+                                            <div className="text-center text-slate-400 text-sm py-8 animate-pulse">Caricamento classifica...</div>
+                                        ) : leaderboard.length === 0 ? (
+                                            <div className="text-center text-slate-400 text-sm py-8">Nessuna classifica disponibile.</div>
+                                        ) : (
+                                            leaderboard.map((player, idx) => {
+                                                const rankInfo = getRank(player.rr);
+                                                return (
+                                                    <div key={player.id} className="bg-slate-700/30 hover:bg-slate-700/50 transition-colors p-2.5 rounded-xl border border-slate-600/50 flex items-center gap-3 relative overflow-hidden group">
+                                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 shadow-md ${idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-gray-300 text-gray-800' : idx === 2 ? 'bg-amber-600 text-amber-100' : 'bg-slate-800 text-slate-400'}`}>
+                                                            {idx + 1}
+                                                        </div>
+                                                        <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-slate-800 border-2 border-slate-600 relative group-hover:scale-105 transition-transform">
+                                                            {player.img ? <img src={player.img} className="w-full h-full object-cover" /> : <User className="w-6 h-6 m-1.5 text-slate-500" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-white font-bold text-xs truncate flex items-center gap-1.5">
+                                                                {player.name}
+                                                                {player.isBot && <span className="px-1.5 py-0.5 bg-slate-600 text-slate-300 rounded text-[8px] uppercase tracking-wider">BOT</span>}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 mt-1">
+                                                                <span className={`text-[9px] uppercase font-black tracking-widest ${rankInfo.text}`}>{rankInfo.name}</span>
+                                                                <span className="text-[10px] text-slate-400 font-medium">• {player.rr} RR</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -1377,9 +1608,13 @@
                     } else if (roomData.arena.minigame === 'SIMONSAYS') {
                         const myProg = roomData.arena.simonsays?.progress[cId];
                         const otherProg = roomData.arena.simonsays?.progress[roomData.arena.challengerIds[index === 0 ? 1 : 0]];
-                        // Il perdente ufficiale di Simon Says ha un progress settato a -1!
                         if (myProg === -1) isLoser = true;
                         else if (otherProg === -1) isWinner = true;
+                    } else if (roomData.arena.minigame === 'SPAMCLICK') {
+                        if (roomData.arena.spamclick?.phase === 'FINISHED') {
+                            if (roomData.arena.spamclick.loserId === cId) isLoser = true;
+                            else if (roomData.arena.spamclick.loserId) isWinner = true;
+                        }
                     }
                 }
 
@@ -1388,7 +1623,6 @@
                     ? `${pRankInfo.border} ${pRankInfo.shadow} ${pRankInfo.extra || ''}` 
                     : 'border-white/20 shadow-2xl';
 
-                // Impostiamo il max di cuori corretto: se è in competitiva ed è un bot, il max visivo è 3. Altrimenti maxGameLives.
                 const visualMaxHearts = roomData.config.isCompetitive && p.isBot ? 3 : maxGameLives;
 
                 return (
@@ -1457,6 +1691,22 @@
                                     </div>
                                 </div>
                             )}
+
+                            {/* UI SPAM CLICK */}
+                            {roomData.arena.minigame === 'SPAMCLICK' && !isChoosing && (
+                                <div className="flex flex-col items-center gap-1 w-full px-4 mt-2">
+                                    <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Click</span>
+                                    <div className="bg-slate-800 px-6 py-2 rounded-full border border-slate-700 shadow-inner min-w-[60px] text-center">
+                                        <span className="text-xl md:text-2xl font-black text-white">
+                                            {p.id === user.uid && roomData.arena.spamclick?.phase === 'PLAY' 
+                                                ? localClicksRef.current 
+                                                : (roomData.arena.spamclick?.scores[cId] || 0)
+                                            }
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     </div>
                 );
@@ -1645,7 +1895,9 @@
                                     ? rouletteIds 
                                     : roomData.arena.challengerIds;
 
-                                const minigameName = roomData.arena.minigame === 'MINESWEEPER' ? 'CAMPO MINATO' : (roomData.arena.minigame === 'SIMONSAYS' ? 'SIMON SAYS' : 'DADI');
+                                const minigameName = roomData.arena.minigame === 'MINESWEEPER' ? 'CAMPO MINATO' 
+                                    : (roomData.arena.minigame === 'SIMONSAYS' ? 'SIMON SAYS' 
+                                    : (roomData.arena.minigame === 'SPAMCLICK' ? 'SPAM CLICK' : 'DADI'));
 
                                 return (
                                     <div className={`flex flex-col items-center justify-center h-full w-full max-w-5xl mx-auto animate-in zoom-in-95 ${deadPlayers.length > 0 ? 'pl-28 md:pl-0' : ''}`}>
@@ -1653,7 +1905,9 @@
                                         {/* INTESTAZIONE MINIGIOCO */}
                                         {!isChoosing && (
                                             <div className="mb-6 bg-slate-800/80 px-8 py-2 rounded-full border border-slate-600 shadow-xl hidden md:flex items-center gap-2">
-                                                {roomData.arena.minigame === 'SIMONSAYS' ? <BrainCircuit className="text-pink-400 w-6 h-6" /> : <Gamepad2 className="text-yellow-400 w-6 h-6" />}
+                                                {roomData.arena.minigame === 'SIMONSAYS' ? <BrainCircuit className="text-pink-400 w-6 h-6" /> : 
+                                                 roomData.arena.minigame === 'SPAMCLICK' ? <Activity className="text-rose-400 w-6 h-6" /> : 
+                                                 <Gamepad2 className="text-yellow-400 w-6 h-6" />}
                                                 <span className="text-xl font-black text-white tracking-widest uppercase">SFIDA: {minigameName}</span>
                                             </div>
                                         )}
@@ -1731,6 +1985,44 @@
                                                                         `}
                                                                     />
                                                                 ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : roomData.arena.minigame === 'SPAMCLICK' ? (
+                                                        <div className="flex flex-col items-center">
+                                                            <div className={`mb-4 px-4 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-sm uppercase tracking-widest shadow-lg border-2 ${
+                                                                roomData.arena.spamclick?.phase === 'COUNTDOWN' 
+                                                                    ? 'bg-slate-800 border-slate-400 text-slate-200 animate-pulse'
+                                                                    : roomData.arena.spamclick?.phase === 'PLAY'
+                                                                        ? 'bg-rose-900 border-rose-400 text-rose-200 animate-pulse'
+                                                                        : 'bg-indigo-900 border-indigo-400 text-indigo-200'
+                                                            }`}>
+                                                                {roomData.arena.spamclick?.phase === 'COUNTDOWN' 
+                                                                    ? 'PREPARATI...' 
+                                                                    : roomData.arena.spamclick?.phase === 'PLAY' 
+                                                                        ? `TEMPO: ${roomData.arena.spamclick?.timeLeft}s` 
+                                                                        : 'TEMPO SCADUTO!'}
+                                                            </div>
+                                                            
+                                                            <div className="relative w-32 h-32 md:w-48 md:h-48 flex items-center justify-center">
+                                                                {countdownText && (
+                                                                    <div className="absolute inset-0 flex items-center justify-center z-20">
+                                                                        <span className="text-5xl md:text-7xl font-black text-white drop-shadow-[0_0_15px_rgba(0,0,0,1)] animate-ping">{countdownText}</span>
+                                                                    </div>
+                                                                )}
+                                                                {roomData.arena.spamclick?.phase === 'PLAY' && (
+                                                                    <button 
+                                                                        onClick={handleSpamClick}
+                                                                        className="w-24 h-24 md:w-36 md:h-36 bg-rose-600 hover:bg-rose-500 rounded-full border-b-8 border-rose-800 active:border-b-0 active:translate-y-2 shadow-[0_0_30px_rgba(225,29,72,0.6)] flex items-center justify-center transition-all focus:outline-none z-10"
+                                                                    >
+                                                                        <span className="text-xl md:text-3xl font-black text-white uppercase tracking-widest drop-shadow-md">Premi!</span>
+                                                                    </button>
+                                                                )}
+                                                                {roomData.arena.spamclick?.phase === 'FINISHED' && (
+                                                                    <div className="flex flex-col items-center text-rose-500 animate-bounce">
+                                                                       <Activity className="w-16 h-16 md:w-20 md:h-20 drop-shadow-md mb-2" />
+                                                                       <span className="font-black text-xl uppercase tracking-widest">Stop!</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     ) : (
