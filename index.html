@@ -105,18 +105,21 @@
         const COMPETITIVE_BOT_NAMES = ['Kyle', 'Marta', 'Gennaro', 'Luca', 'Rosa Maria', 'Delia', 'Marissa', 'Dan', 'Gale', 'Mario', 'Paolo', 'James', 'Terra', 'Pant', 'Piedone', 'Mt.'];
 
         // --- SISTEMA DI RANKING ---
+        // Nuova progressione: Ferro +30, Bronzo +40, Argento +50, Oro +60, Platino +60, Diamante +80, Smeraldo +90, Stellare +100, Solare +100, Cosmico +100
         const RANKS = [
             { name: "Ferro 1", minRR: 0, text: "text-slate-500", bg: "bg-slate-500", border: "border-slate-500", shadow: "shadow-none", extra: "" },
-            { name: "Ferro 2", minRR: 100, text: "text-slate-400", bg: "bg-slate-400", border: "border-slate-400", shadow: "shadow-[0_0_10px_rgba(148,163,184,0.3)]", extra: "" },
-            { name: "Ferro 3", minRR: 200, text: "text-slate-300", bg: "bg-slate-300", border: "border-slate-300", shadow: "shadow-[0_0_15px_rgba(203,213,225,0.4)]", extra: "" },
-            { name: "Bronzo", minRR: 300, text: "text-amber-700", bg: "bg-amber-700", border: "border-amber-700", shadow: "shadow-[0_0_20px_rgba(180,83,9,0.6)]", extra: "" },
-            { name: "Argento", minRR: 400, text: "text-gray-300", bg: "bg-gray-300", border: "border-gray-300", shadow: "shadow-[0_0_20px_rgba(209,213,219,0.6)]", extra: "" },
-            { name: "Oro", minRR: 500, text: "text-yellow-400", bg: "bg-yellow-400", border: "border-yellow-400", shadow: "shadow-[0_0_25px_rgba(250,204,21,0.7)]", extra: "ring-2 ring-yellow-400/30" },
-            { name: "Platino", minRR: 600, text: "text-cyan-300", bg: "bg-cyan-300", border: "border-cyan-300", shadow: "shadow-[0_0_25px_rgba(103,232,249,0.8)]", extra: "ring-2 ring-cyan-300/40" },
-            { name: "Diamante", minRR: 700, text: "text-purple-400", bg: "bg-purple-400", border: "border-purple-400", shadow: "shadow-[0_0_30px_rgba(192,132,252,0.9)]", extra: "ring-4 ring-purple-400/50" },
-            { name: "Smeraldo", minRR: 800, text: "text-emerald-400", bg: "bg-emerald-400", border: "border-emerald-400", shadow: "shadow-[0_0_35px_rgba(52,211,153,1)]", extra: "ring-4 ring-emerald-400/60" },
-            { name: "Solare", minRR: 900, text: "text-orange-500", bg: "bg-orange-500", border: "border-orange-500", shadow: "shadow-[0_0_40px_rgba(249,115,22,1)]", extra: "ring-4 ring-orange-500/70 animate-[pulse_2s_ease-in-out_infinite]" },
-            { name: "Cosmico", minRR: 1000, text: "text-fuchsia-500", bg: "bg-fuchsia-500", border: "border-fuchsia-500", shadow: "shadow-[0_0_50px_rgba(217,70,239,1)]", extra: "ring-4 ring-fuchsia-500/80 animate-[pulse_1s_ease-in-out_infinite]" }
+            { name: "Ferro 2", minRR: 30, text: "text-slate-400", bg: "bg-slate-400", border: "border-slate-400", shadow: "shadow-[0_0_10px_rgba(148,163,184,0.3)]", extra: "" },
+            { name: "Ferro 3", minRR: 60, text: "text-slate-300", bg: "bg-slate-300", border: "border-slate-300", shadow: "shadow-[0_0_15px_rgba(203,213,225,0.4)]", extra: "" },
+            { name: "Bronzo", minRR: 90, text: "text-amber-700", bg: "bg-amber-700", border: "border-amber-700", shadow: "shadow-[0_0_20px_rgba(180,83,9,0.6)]", extra: "" },
+            { name: "Argento", minRR: 130, text: "text-gray-300", bg: "bg-gray-300", border: "border-gray-300", shadow: "shadow-[0_0_20px_rgba(209,213,219,0.6)]", extra: "" },
+            { name: "Oro", minRR: 180, text: "text-yellow-400", bg: "bg-yellow-400", border: "border-yellow-400", shadow: "shadow-[0_0_25px_rgba(250,204,21,0.7)]", extra: "ring-2 ring-yellow-400/30" },
+            { name: "Platino", minRR: 240, text: "text-cyan-300", bg: "bg-cyan-300", border: "border-cyan-300", shadow: "shadow-[0_0_25px_rgba(103,232,249,0.8)]", extra: "ring-2 ring-cyan-300/40" },
+            { name: "Diamante", minRR: 300, text: "text-purple-400", bg: "bg-purple-400", border: "border-purple-400", shadow: "shadow-[0_0_30px_rgba(192,132,252,0.9)]", extra: "ring-4 ring-purple-400/50" },
+            { name: "Smeraldo", minRR: 380, text: "text-emerald-400", bg: "bg-emerald-400", border: "border-emerald-400", shadow: "shadow-[0_0_35px_rgba(52,211,153,1)]", extra: "ring-4 ring-emerald-400/60" },
+            { name: "Stellare", minRR: 470, text: "text-indigo-400", bg: "bg-indigo-400", border: "border-indigo-400", shadow: "shadow-[0_0_40px_rgba(129,140,248,1)]", extra: "ring-4 ring-indigo-400/70 animate-[pulse_2s_ease-in-out_infinite]" },
+            { name: "Solare", minRR: 570, text: "text-orange-500", bg: "bg-orange-500", border: "border-orange-500", shadow: "shadow-[0_0_45px_rgba(249,115,22,1)]", extra: "ring-4 ring-orange-500/70 animate-[pulse_1.5s_ease-in-out_infinite]" },
+            { name: "Cosmico", minRR: 670, text: "text-fuchsia-500", bg: "bg-fuchsia-500", border: "border-fuchsia-500", shadow: "shadow-[0_0_50px_rgba(217,70,239,1)]", extra: "ring-4 ring-fuchsia-500/80 animate-[pulse_1s_ease-in-out_infinite]" },
+            { name: "Astrale", minRR: 770, text: "text-rose-400", bg: "bg-rose-400", border: "border-rose-400", shadow: "shadow-[0_0_60px_rgba(251,113,133,1)]", extra: "ring-4 ring-rose-400/90 animate-[pulse_0.5s_ease-in-out_infinite]" }
         ];
 
         function getRank(rr) {
@@ -132,7 +135,7 @@
         }
 
         const RankBadge = ({ rr }) => {
-            const rankInfo = getRank(rr !== undefined ? rr : 200);
+            const rankInfo = getRank(rr !== undefined ? rr : 60); // 60 = Ferro 3 (Partenza)
             return (
                 <span className={`px-1.5 py-0.5 rounded-md border border-current text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-slate-900/90 shadow-md ${rankInfo.text} shrink-0`}>
                     {rankInfo.name}
@@ -315,8 +318,8 @@
             const [errorMsg, setErrorMsg] = useState('');
             const [rouletteIds, setRouletteIds] = useState([]);
             const [myRRChange, setMyRRChange] = useState(null);
-            const [simonLit, setSimonLit] = useState(null);
-            const [countdownText, setCountdownText] = useState(null);
+            const [simonLit, setSimonLit] = useState(null); // Stato UI locale per animazioni Simon
+            const [countdownText, setCountdownText] = useState(null); // NUOVO: Stato UI per il countdown di Simon
 
             // Per la gara di click (Spam Click)
             const localClicksRef = useRef(0);
@@ -336,7 +339,7 @@
             const processedGamesRef = useRef(new Set());
             const arenaStartTimeRef = useRef(null);
             const handledRoundRef = useRef(-1); 
-            const botMoveCountRef = useRef(new Set());
+            const botMoveCountRef = useRef(new Set()); // SET PER IA BOT!
 
             // --- SISTEMA AUTONOMO DI SIMULAZIONE BOT (OGNI 3 ORE) ---
             useEffect(() => {
@@ -354,9 +357,11 @@
 
                         const lastRun = simSnap.data().lastRun;
                         if (now - lastRun > THREE_HOURS) {
+                            // Aggiorniamo subito il timestamp così altri giocatori online non fanno la simulazione in parallelo
                             await updateDoc(simRef, { lastRun: now });
                             console.log("Esecuzione simulazione bot in background...");
 
+                            // 1. Recupera o crea i bot
                             const botsSnap = await getDocs(collection(db, "competitive_bots"));
                             let allBots = [];
                             botsSnap.forEach(d => allBots.push({ id: d.id, ...d.data() }));
@@ -370,13 +375,17 @@
                                 await batch.commit();
                             }
 
+                            // 2. Seleziona 8 bot a caso
                             const shuffled = allBots.sort(() => 0.5 - Math.random());
                             const selectedBots = shuffled.slice(0, 8);
                             
+                            // 3. Simula la partita
                             if (selectedBots.length === 8) {
                                 const batch = writeBatch(db);
+                                // Dato che sono già mescolati, il loro indice + 1 equivale a un piazzamento casuale perfetto!
                                 selectedBots.forEach((bot, index) => {
                                     const placement = index + 1;
+                                    // Se arriva 1°, randomizziamo con quanti cuori ha vinto per l'assegnazione (max 3 per bot)
                                     const simulatedLives = placement === 1 ? Math.floor(Math.random() * 3) + 1 : 0;
                                     
                                     const rrChange = calculateRRChange(placement, simulatedLives, true);
@@ -393,6 +402,7 @@
                     }
                 };
 
+                // Controlla all'apertura del gioco e poi ogni 15 minuti mentre è aperto
                 checkAndRunSimulation();
                 const simInterval = setInterval(checkAndRunSimulation, 15 * 60 * 1000);
                 return () => clearInterval(simInterval);
@@ -401,7 +411,7 @@
             // Effetto Sonoro Simon Says
             useEffect(() => {
                 if (simonLit !== null) {
-                    playTone(SIMON_COLORS[simonLit].freq, 350); 
+                    playTone(SIMON_COLORS[simonLit].freq, 350); // Leggermente meno di 400ms per non accavallarsi
                 }
             }, [simonLit]);
 
@@ -414,12 +424,12 @@
                         const interval = setInterval(() => {
                             if (step < ss.sequence.length) {
                                 setSimonLit(ss.sequence[step]);
-                                setTimeout(() => setSimonLit(null), 400); 
+                                setTimeout(() => setSimonLit(null), 400); // 400ms acceso
                                 step++;
                             } else {
                                 clearInterval(interval);
                             }
-                        }, 800); 
+                        }, 800); // Passo di 800ms
                         
                         return () => {
                             clearInterval(interval);
@@ -502,6 +512,7 @@
                             
                             let allPlayers = [];
                             
+                            // Elabora Giocatori Umani
                             usersSnap.forEach(d => {
                                 const data = d.data();
                                 if (data.displayName || data.gamesPlayed > 0) {
@@ -521,6 +532,7 @@
                                 }
                             });
                             
+                            // Elabora Bot Competitivi
                             botsSnap.forEach(d => {
                                 const data = d.data();
                                 allPlayers.push({
@@ -532,6 +544,7 @@
                                 });
                             });
                             
+                            // Ordina per punteggio RR (decrescente) e prendi la Top 10
                             allPlayers.sort((a, b) => b.rr - a.rr);
                             setLeaderboard(allPlayers.slice(0, 10));
                         } catch (e) {
@@ -1224,8 +1237,9 @@
                 }
 
                 if (sc.phase === 'FINISHED' && !sc.loserId) {
-                    if (handledRoundRef.current !== roomData.arena.round) {
-                        handledRoundRef.current = roomData.arena.round;
+                    const spamKey = `spam_finish_${roomData.arena.round}`;
+                    if (!botMoveCountRef.current.has(spamKey)) {
+                        botMoveCountRef.current.add(spamKey);
                         const cIds = roomData.arena.challengerIds;
                         const s1 = sc.scores[cIds[0]] || 0;
                         const s2 = sc.scores[cIds[1]] || 0;
@@ -1618,7 +1632,7 @@
                     }
                 }
 
-                const pRankInfo = getRank(p.rr !== undefined ? p.rr : 200);
+                const pRankInfo = getRank(p.rr !== undefined ? p.rr : 60);
                 const fighterBorder = roomData.config.isCompetitive 
                     ? `${pRankInfo.border} ${pRankInfo.shadow} ${pRankInfo.extra || ''}` 
                     : 'border-white/20 shadow-2xl';
@@ -1731,7 +1745,7 @@
                                 const isFighting = roomData.state === 'ARENA' && roomData.arena.challengerIds.includes(p.id);
                                 const cInfo = CHARACTERS.find(c => c.id === p.characterId);
                                 
-                                const pRankInfo = getRank(p.rr !== undefined ? p.rr : 200);
+                                const pRankInfo = getRank(p.rr !== undefined ? p.rr : 60);
                                 const topBarBorder = isFighting 
                                     ? (roomData.config.isCompetitive ? `${pRankInfo.border} ${pRankInfo.shadow} ${pRankInfo.extra || ''}` : 'border-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]')
                                     : 'border-slate-600 shadow-lg';
@@ -2059,7 +2073,7 @@
                                     {roomData.winnerId && roomData.players[roomData.winnerId] && (() => {
                                         const winner = roomData.players[roomData.winnerId];
                                         const char = CHARACTERS.find(c => c.id === winner.characterId);
-                                        const winnerRankInfo = getRank(winner.rr !== undefined ? winner.rr : 200);
+                                        const winnerRankInfo = getRank(winner.rr !== undefined ? winner.rr : 60);
                                         const winnerBorder = roomData.config.isCompetitive 
                                             ? `${winnerRankInfo.border} ${winnerRankInfo.shadow} ${winnerRankInfo.extra || ''}`
                                             : 'border-white/50 shadow-[0_0_40px_rgba(255,255,255,0.2)]';
