@@ -51,7 +51,7 @@
         // --- FIREBASE SDK ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteDoc, increment, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, increment, collection, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // Configurazione Firebase dell'Utente
@@ -86,7 +86,6 @@
                 oscillator.type = 'sine';
                 oscillator.frequency.value = frequency;
 
-                // Envelopes per evitare click audio netti all'inizio e alla fine
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05);
                 gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration / 1000);
@@ -107,17 +106,17 @@
 
         // --- SISTEMA DI RANKING ---
         const RANKS = [
-            { name: "Ferro 1", minRR: 0, text: "text-slate-500", bg: "bg-slate-500" },
-            { name: "Ferro 2", minRR: 100, text: "text-slate-400", bg: "bg-slate-400" },
-            { name: "Ferro 3", minRR: 200, text: "text-slate-300", bg: "bg-slate-300" },
-            { name: "Bronzo", minRR: 300, text: "text-amber-700", bg: "bg-amber-700" },
-            { name: "Argento", minRR: 400, text: "text-gray-300", bg: "bg-gray-300" },
-            { name: "Oro", minRR: 500, text: "text-yellow-400", bg: "bg-yellow-400" },
-            { name: "Platino", minRR: 600, text: "text-cyan-300", bg: "bg-cyan-300" },
-            { name: "Diamante", minRR: 700, text: "text-purple-400", bg: "bg-purple-400" },
-            { name: "Smeraldo", minRR: 800, text: "text-emerald-400", bg: "bg-emerald-400" },
-            { name: "Solare", minRR: 900, text: "text-orange-500", bg: "bg-orange-500" },
-            { name: "Cosmico", minRR: 1000, text: "text-fuchsia-500", bg: "bg-fuchsia-500" }
+            { name: "Ferro 1", minRR: 0, text: "text-slate-500", bg: "bg-slate-500", border: "border-slate-500", shadow: "shadow-none", extra: "" },
+            { name: "Ferro 2", minRR: 100, text: "text-slate-400", bg: "bg-slate-400", border: "border-slate-400", shadow: "shadow-[0_0_10px_rgba(148,163,184,0.3)]", extra: "" },
+            { name: "Ferro 3", minRR: 200, text: "text-slate-300", bg: "bg-slate-300", border: "border-slate-300", shadow: "shadow-[0_0_15px_rgba(203,213,225,0.4)]", extra: "" },
+            { name: "Bronzo", minRR: 300, text: "text-amber-700", bg: "bg-amber-700", border: "border-amber-700", shadow: "shadow-[0_0_20px_rgba(180,83,9,0.6)]", extra: "" },
+            { name: "Argento", minRR: 400, text: "text-gray-300", bg: "bg-gray-300", border: "border-gray-300", shadow: "shadow-[0_0_20px_rgba(209,213,219,0.6)]", extra: "" },
+            { name: "Oro", minRR: 500, text: "text-yellow-400", bg: "bg-yellow-400", border: "border-yellow-400", shadow: "shadow-[0_0_25px_rgba(250,204,21,0.7)]", extra: "ring-2 ring-yellow-400/30" },
+            { name: "Platino", minRR: 600, text: "text-cyan-300", bg: "bg-cyan-300", border: "border-cyan-300", shadow: "shadow-[0_0_25px_rgba(103,232,249,0.8)]", extra: "ring-2 ring-cyan-300/40" },
+            { name: "Diamante", minRR: 700, text: "text-purple-400", bg: "bg-purple-400", border: "border-purple-400", shadow: "shadow-[0_0_30px_rgba(192,132,252,0.9)]", extra: "ring-4 ring-purple-400/50" },
+            { name: "Smeraldo", minRR: 800, text: "text-emerald-400", bg: "bg-emerald-400", border: "border-emerald-400", shadow: "shadow-[0_0_35px_rgba(52,211,153,1)]", extra: "ring-4 ring-emerald-400/60" },
+            { name: "Solare", minRR: 900, text: "text-orange-500", bg: "bg-orange-500", border: "border-orange-500", shadow: "shadow-[0_0_40px_rgba(249,115,22,1)]", extra: "ring-4 ring-orange-500/70 animate-[pulse_2s_ease-in-out_infinite]" },
+            { name: "Cosmico", minRR: 1000, text: "text-fuchsia-500", bg: "bg-fuchsia-500", border: "border-fuchsia-500", shadow: "shadow-[0_0_50px_rgba(217,70,239,1)]", extra: "ring-4 ring-fuchsia-500/80 animate-[pulse_1s_ease-in-out_infinite]" }
         ];
 
         function getRank(rr) {
@@ -141,14 +140,21 @@
             );
         };
 
-        function calculateRRChange(placement) {
-            if (placement === 8 || placement === 7) return - (Math.floor(Math.random() * 6) + 15);
-            if (placement === 6) return -10;
-            if (placement === 5) return - (Math.floor(Math.random() * 5) + 1);
-            if (placement === 4) return Math.floor(Math.random() * 2) + 1;
-            if (placement === 3) return Math.floor(Math.random() * 7) + 6;
-            if (placement === 2) return Math.floor(Math.random() * 8) + 13;
-            if (placement === 1) return Math.floor(Math.random() * 10) + 21;
+        // Calcolo RR in base al piazzamento e alla tipologia (umano = 4 cuori max, bot = 3 cuori max)
+        function calculateRRChange(placement, lives = 0, isBot = false) {
+            if (placement === 8) return - (Math.floor(Math.random() * 5) + 18); 
+            if (placement === 7) return - (Math.floor(Math.random() * 4) + 14); 
+            if (placement === 6) return - (Math.floor(Math.random() * 4) + 10); 
+            if (placement === 5) return 0; 
+            if (placement === 4) return Math.floor(Math.random() * 2) + 1; 
+            if (placement === 3) return Math.floor(Math.random() * 7) + 6; 
+            if (placement === 2) return Math.floor(Math.random() * 8) + 13; 
+            if (placement === 1) {
+                const maxLives = isBot ? 3 : 4;
+                if (lives === maxLives) return 50; // Vittoria Perfetta
+                if (lives === maxLives - 1) return Math.floor(Math.random() * 10) + 31; // 1 cuore perso
+                return Math.floor(Math.random() * 10) + 21; // Vittoria base
+            }
             return 0;
         }
 
@@ -310,6 +316,7 @@
             const [rouletteIds, setRouletteIds] = useState([]);
             const [myRRChange, setMyRRChange] = useState(null);
             const [simonLit, setSimonLit] = useState(null); // Stato UI locale per animazioni Simon
+            const [countdownText, setCountdownText] = useState(null); // NUOVO: Stato UI per il countdown di Simon
 
             const [roomId, setRoomId] = useState(null);
             const [roomData, setRoomData] = useState(null);
@@ -321,12 +328,96 @@
             const handledRoundRef = useRef(-1); 
             const botMoveCountRef = useRef(new Set()); // SET PER IA BOT!
 
+            // --- SISTEMA AUTONOMO DI SIMULAZIONE BOT (OGNI 3 ORE) ---
+            useEffect(() => {
+                const checkAndRunSimulation = async () => {
+                    const simRef = doc(db, "system", "botSimulation");
+                    try {
+                        const simSnap = await getDoc(simRef);
+                        const now = Date.now();
+                        const THREE_HOURS = 3 * 60 * 60 * 1000;
+
+                        if (!simSnap.exists()) {
+                            await setDoc(simRef, { lastRun: now });
+                            return;
+                        }
+
+                        const lastRun = simSnap.data().lastRun;
+                        if (now - lastRun > THREE_HOURS) {
+                            // Aggiorniamo subito il timestamp così altri giocatori online non fanno la simulazione in parallelo
+                            await updateDoc(simRef, { lastRun: now });
+                            console.log("Esecuzione simulazione bot in background...");
+
+                            // 1. Recupera o crea i bot
+                            const botsSnap = await getDocs(collection(db, "competitive_bots"));
+                            let allBots = [];
+                            botsSnap.forEach(d => allBots.push({ id: d.id, ...d.data() }));
+
+                            if (allBots.length === 0) {
+                                const batch = writeBatch(db);
+                                COMPETITIVE_BOT_NAMES.forEach(name => {
+                                    batch.set(doc(db, "competitive_bots", name), { rr: 200 });
+                                    allBots.push({ id: name, rr: 200 });
+                                });
+                                await batch.commit();
+                            }
+
+                            // 2. Seleziona 8 bot a caso
+                            const shuffled = allBots.sort(() => 0.5 - Math.random());
+                            const selectedBots = shuffled.slice(0, 8);
+                            
+                            // 3. Simula la partita
+                            if (selectedBots.length === 8) {
+                                const batch = writeBatch(db);
+                                // Dato che sono già mescolati, il loro indice + 1 equivale a un piazzamento casuale perfetto!
+                                selectedBots.forEach((bot, index) => {
+                                    const placement = index + 1;
+                                    // Se arriva 1°, randomizziamo con quanti cuori ha vinto per l'assegnazione (max 3 per bot)
+                                    const simulatedLives = placement === 1 ? Math.floor(Math.random() * 3) + 1 : 0;
+                                    
+                                    const rrChange = calculateRRChange(placement, simulatedLives, true);
+                                    const newRR = Math.max(0, (bot.rr || 200) + rrChange);
+                                    
+                                    batch.set(doc(db, "competitive_bots", bot.id), { rr: newRR }, { merge: true });
+                                });
+                                await batch.commit();
+                                console.log("Simulazione completata con successo! Rank dei bot aggiornati.");
+                            }
+                        }
+                    } catch (err) {
+                        console.log("Simulazione bot in background skippata (Errore o permessi)", err);
+                    }
+                };
+
+                // Controlla all'apertura del gioco e poi ogni 15 minuti mentre è aperto
+                checkAndRunSimulation();
+                const simInterval = setInterval(checkAndRunSimulation, 15 * 60 * 1000);
+                return () => clearInterval(simInterval);
+            }, []);
+
             // Effetto Sonoro Simon Says
             useEffect(() => {
                 if (simonLit !== null) {
                     playTone(SIMON_COLORS[simonLit].freq, 350); // Leggermente meno di 400ms per non accavallarsi
                 }
             }, [simonLit]);
+
+            // Effetto Countdown Simon Says visuale
+            useEffect(() => {
+                if (roomData?.state === 'ARENA' && roomData.arena.minigame === 'SIMONSAYS' && roomData.arena.matchState === 'WAITING_ACTION') {
+                    if (roomData.arena.simonsays?.phase === 'COUNTDOWN') {
+                        setCountdownText('3');
+                        const t1 = setTimeout(() => setCountdownText('2'), 1000);
+                        const t2 = setTimeout(() => setCountdownText('1'), 2000);
+                        return () => { clearTimeout(t1); clearTimeout(t2); };
+                    } else {
+                        setCountdownText(null);
+                    }
+                } else {
+                    setCountdownText(null);
+                }
+            }, [roomData?.arena?.simonsays?.phase, roomData?.arena?.matchState, roomData?.arena?.minigame, roomData?.state]);
+
 
             // 1. Auth Init & Stats Listener
             useEffect(() => {
@@ -439,7 +530,8 @@
                             characterId: null,
                             lives: lobbyConfig.startingLives,
                             isReady: false,
-                            rr: userStats?.rr !== undefined ? userStats.rr : 200
+                            rr: userStats?.rr !== undefined ? userStats.rr : 200,
+                            consecutiveMatches: 0
                         }
                     },
                     arena: {
@@ -490,7 +582,8 @@
                         characterId: null,
                         lives: roomData.config.startingLives || 4,
                         isReady: false,
-                        rr: userStats?.rr !== undefined ? userStats.rr : 200
+                        rr: userStats?.rr !== undefined ? userStats.rr : 200,
+                        consecutiveMatches: 0
                     };
 
                     updateDoc(doc(db, "rooms", roomId), { players: newPlayers });
@@ -521,7 +614,7 @@
                         const winnerId = alivePlayers[0].id;
                         updates[`players.${winnerId}.placement`] = 1;
                         if (data.config.isCompetitive) {
-                            const rrChange = calculateRRChange(1);
+                            const rrChange = calculateRRChange(1, alivePlayers[0].lives, alivePlayers[0].isBot);
                             updates[`players.${winnerId}.rrChange`] = rrChange;
                             
                             if (alivePlayers[0].isBot) {
@@ -536,14 +629,29 @@
                     return;
                 }
 
-                const idx1 = Math.floor(Math.random() * alivePlayers.length);
-                let idx2 = Math.floor(Math.random() * alivePlayers.length);
-                while (idx1 === idx2) {
-                    idx2 = Math.floor(Math.random() * alivePlayers.length);
-                }
+                // Logica intelligente per la scelta degli sfidanti (Massimo 2 partite di fila)
+                let availableToPick = [...alivePlayers];
+                const pickPlayer = () => {
+                    let preferred = availableToPick.filter(p => (p.consecutiveMatches || 0) < 2);
+                    let pool = preferred.length > 0 ? preferred : availableToPick;
+                    let selectedIdx = Math.floor(Math.random() * pool.length);
+                    let selectedPlayer = pool[selectedIdx];
+                    availableToPick = availableToPick.filter(p => p.id !== selectedPlayer.id);
+                    return selectedPlayer.id;
+                };
 
-                const c1 = alivePlayers[idx1].id;
-                const c2 = alivePlayers[idx2].id;
+                const c1 = pickPlayer();
+                const c2 = pickPlayer();
+
+                // Aggiornamento contatore partite consecutive per tutti i giocatori vivi
+                const updatedPlayers = { ...data.players };
+                alivePlayers.forEach(p => {
+                    if (p.id === c1 || p.id === c2) {
+                        updatedPlayers[p.id] = { ...p, consecutiveMatches: (p.consecutiveMatches || 0) + 1 };
+                    } else {
+                        updatedPlayers[p.id] = { ...p, consecutiveMatches: 0 };
+                    }
+                });
 
                 const minigameOptions = ['DICE', 'MINESWEEPER', 'SIMONSAYS'];
                 const minigameType = minigameOptions[Math.floor(Math.random() * minigameOptions.length)];
@@ -563,15 +671,15 @@
                     }
                     minesweeperData = { board, turn: c1, bombsFound: { [c1]: 0, [c2]: 0 }, moveCount: 0 };
                 } else if (minigameType === 'SIMONSAYS') {
-                    // Genera sequenza iniziale di 3
                     simonsaysData = {
                         sequence: [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)],
-                        phase: 'WATCH', 
+                        phase: 'COUNTDOWN', 
                         progress: { [c1]: 0, [c2]: 0 }
                     };
                 }
 
                 await updateRoom({
+                    players: updatedPlayers,
                     state: 'ARENA',
                     'arena.challengerIds': [c1, c2],
                     'arena.matchState': 'CHOOSING_CHALLENGERS',
@@ -628,15 +736,19 @@
                         botRR = 200;
                     }
 
+                    // BOT LIFE LOGIC: In competitive, bots get 3 lives. Humans get 4.
+                    const botStartingLives = roomData.config.isCompetitive ? 3 : (roomData.config.startingLives || 4);
+
                     newPlayers[botId] = {
                         id: botId,
                         name: botName,
                         isBot: true,
                         characterId: charId,
-                        lives: roomData.config.startingLives || 4,
+                        lives: botStartingLives,
                         isReady: true,
                         rr: botRR,
-                        originalBotName: originalBotName
+                        originalBotName: originalBotName,
+                        consecutiveMatches: 0
                     };
                 }
 
@@ -666,7 +778,7 @@
                         updates[`players.${loserId}.placement`] = aliveCount; 
                         
                         if (roomData.config.isCompetitive) {
-                            const rrChange = calculateRRChange(aliveCount);
+                            const rrChange = calculateRRChange(aliveCount, 0, roomData.players[loserId].isBot);
                             updates[`players.${loserId}.rrChange`] = rrChange;
 
                             if (roomData.players[loserId].isBot) {
@@ -868,37 +980,19 @@
 
             // --- LOGICA SIMON SAYS ---
             
-            // Animazione Locale Simon (Client-side)
-            useEffect(() => {
-                if (roomData?.state === 'ARENA' && roomData.arena.minigame === 'SIMONSAYS' && roomData.arena.matchState === 'WAITING_ACTION') {
-                    const ss = roomData.arena.simonsays;
-                    if (ss && ss.phase === 'WATCH') {
-                        let step = 0;
-                        const interval = setInterval(() => {
-                            if (step < ss.sequence.length) {
-                                setSimonLit(ss.sequence[step]);
-                                setTimeout(() => setSimonLit(null), 400); // 400ms acceso
-                                step++;
-                            } else {
-                                clearInterval(interval);
-                            }
-                        }, 800); // Passo di 800ms
-                        
-                        return () => {
-                            clearInterval(interval);
-                            setSimonLit(null);
-                        };
-                    } else {
-                        setSimonLit(null);
-                    }
-                }
-            }, [roomData?.arena?.simonsays?.phase, roomData?.arena?.simonsays?.sequence?.length, roomData?.arena?.matchState]);
-
             // Host gestisce Fasi e Bot per Simon
             useEffect(() => {
                 if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SIMONSAYS') return;
                 const ss = roomData.arena.simonsays;
                 if (!ss) return;
+
+                // 0. Passaggio da COUNTDOWN a WATCH
+                if (ss.phase === 'COUNTDOWN') {
+                    const timer = setTimeout(() => {
+                        updateRoom({ 'arena.simonsays.phase': 'WATCH' });
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
 
                 // 1. Passaggio da WATCH a PLAY
                 if (ss.phase === 'WATCH') {
@@ -943,7 +1037,10 @@
 
                                     const correctColor = ss.sequence[currentProg];
                                     
-                                    const failChance = 0.02 + (ss.sequence.length * 0.03); 
+                                    let failChance = 0.01; 
+                                    if (ss.sequence.length > 3) {
+                                        failChance += (ss.sequence.length - 3) * 0.05;
+                                    }
                                     
                                     let chosenColor = correctColor;
                                     if (Math.random() < failChance) {
@@ -1178,7 +1275,7 @@
                                     <label className="block text-sm text-slate-300 mb-2">Modalità di Gioco</label>
                                     <div className="flex gap-2">
                                         <button onClick={() => setLobbyConfig({...lobbyConfig, isCompetitive: false})} className={`flex-1 py-3 rounded-xl font-bold transition-all ${!lobbyConfig.isCompetitive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>Amichevole</button>
-                                        <button onClick={() => setLobbyConfig({...lobbyConfig, isCompetitive: true, maxPlayers: 8, startingLives: 3})} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${lobbyConfig.isCompetitive ? 'bg-rose-600 text-white shadow-[0_0_15px_rgba(225,29,72,0.5)]' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}><Swords className="w-5 h-5"/> Competitiva</button>
+                                        <button onClick={() => setLobbyConfig({...lobbyConfig, isCompetitive: true, maxPlayers: 8, startingLives: 4})} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${lobbyConfig.isCompetitive ? 'bg-rose-600 text-white shadow-[0_0_15px_rgba(225,29,72,0.5)]' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}><Swords className="w-5 h-5"/> Competitiva</button>
                                     </div>
                                 </div>
                                 <div className="mb-6">
@@ -1286,6 +1383,14 @@
                     }
                 }
 
+                const pRankInfo = getRank(p.rr !== undefined ? p.rr : 200);
+                const fighterBorder = roomData.config.isCompetitive 
+                    ? `${pRankInfo.border} ${pRankInfo.shadow} ${pRankInfo.extra || ''}` 
+                    : 'border-white/20 shadow-2xl';
+
+                // Impostiamo il max di cuori corretto: se è in competitiva ed è un bot, il max visivo è 3. Altrimenti maxGameLives.
+                const visualMaxHearts = roomData.config.isCompetitive && p.isBot ? 3 : maxGameLives;
+
                 return (
                     <div key={cId + index} className={`flex flex-col items-center gap-2 md:gap-4 transition-all duration-300 ${isLoser ? 'opacity-50 scale-90 blur-[2px]' : isWinner ? 'scale-110 drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]' : ''} ${isChoosing ? 'scale-105 opacity-80' : ''}`}>
                         <div className="bg-slate-800/90 px-4 md:px-6 py-1.5 md:py-2 rounded-full border border-slate-600 flex flex-col items-center min-h-[50px] md:min-h-[64px] min-w-[100px] md:min-w-[120px]">
@@ -1293,10 +1398,10 @@
                                 {p.name}
                                 {roomData.config.isCompetitive && <RankBadge rr={p.rr} />}
                             </span>
-                            <div className="mt-1"><BigHearts count={p.lives} max={maxGameLives} /></div>
+                            <div className="mt-1"><BigHearts count={p.lives} max={visualMaxHearts} /></div>
                         </div>
                         
-                        <div className={`relative w-28 h-28 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-2xl md:rounded-3xl flex items-center justify-center border-4 ${char ? char.color : 'border-slate-500'} border-white/20 shadow-2xl overflow-hidden p-1.5 md:p-2`}>
+                        <div className={`relative w-28 h-28 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-2xl md:rounded-3xl flex items-center justify-center border-4 ${char ? char.color : 'bg-slate-500'} ${fighterBorder} overflow-hidden p-1.5 md:p-2`}>
                             {char && <img src={char.img} className={`w-full h-full object-cover rounded-xl md:rounded-2xl z-10 transition-transform ${isWinner ? 'animate-bounce' : ''}`} />}
                             {isLoser && <div className="absolute inset-0 bg-red-600/60 z-20 flex items-center justify-center animate-in zoom-in"><span className="text-2xl md:text-4xl font-black text-white rotate-[-15deg] drop-shadow-lg">-1 VITA</span></div>}
                         </div>
@@ -1376,13 +1481,20 @@
                                 const isFighting = roomData.state === 'ARENA' && roomData.arena.challengerIds.includes(p.id);
                                 const cInfo = CHARACTERS.find(c => c.id === p.characterId);
                                 
+                                const pRankInfo = getRank(p.rr !== undefined ? p.rr : 200);
+                                const topBarBorder = isFighting 
+                                    ? (roomData.config.isCompetitive ? `${pRankInfo.border} ${pRankInfo.shadow} ${pRankInfo.extra || ''}` : 'border-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]')
+                                    : 'border-slate-600 shadow-lg';
+
+                                const visualMaxHearts = roomData.config.isCompetitive && p.isBot ? 3 : maxGameLives;
+
                                 return (
-                                    <div key={p.id} className={`flex flex-col items-center shrink-0 transition-all ${isFighting ? 'scale-110 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] z-10' : 'scale-95'}`}>
-                                        <div className={`bg-slate-800 border-2 ${isFighting ? 'border-yellow-400' : 'border-slate-600'} rounded-xl p-1.5 flex flex-col items-center w-20 md:w-24 shadow-lg transition-colors`}>
+                                    <div key={p.id} className={`flex flex-col items-center shrink-0 transition-all ${isFighting ? 'scale-110 z-10' : 'scale-95'}`}>
+                                        <div className={`bg-slate-800 border-2 ${topBarBorder} rounded-xl p-1.5 flex flex-col items-center w-20 md:w-24 transition-colors`}>
                                             {cInfo ? <img src={cInfo.img} className="w-10 h-10 md:w-12 md:h-12 object-cover rounded-lg mb-1 shadow-md" /> : <User className="w-8 h-8 text-slate-500 mb-1" />}
                                             <span className="text-[9px] md:text-[10px] font-bold text-white truncate w-full text-center uppercase tracking-wider mb-0.5">{p.name}</span>
                                             {roomData.config.isCompetitive && <div className="mb-1"><RankBadge rr={p.rr} /></div>}
-                                            <Hearts count={p.lives} max={maxGameLives} />
+                                            <Hearts count={p.lives} max={visualMaxHearts} />
                                         </div>
                                     </div>
                                 );
@@ -1591,10 +1703,25 @@
                                                         </div>
                                                     ) : roomData.arena.minigame === 'SIMONSAYS' ? (
                                                         <div className="flex flex-col items-center">
-                                                            <div className={`mb-4 px-4 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-sm uppercase tracking-widest shadow-lg border-2 ${roomData.arena.simonsays?.phase === 'WATCH' ? 'bg-indigo-900 border-indigo-400 text-indigo-200 animate-pulse' : 'bg-emerald-900 border-emerald-400 text-emerald-200 animate-bounce'}`}>
-                                                                {roomData.arena.simonsays?.phase === 'WATCH' ? 'OSSERVA...' : 'RIPETI!'}
+                                                            <div className={`mb-4 px-4 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-sm uppercase tracking-widest shadow-lg border-2 ${
+                                                                roomData.arena.simonsays?.phase === 'COUNTDOWN' 
+                                                                    ? 'bg-slate-800 border-slate-400 text-slate-200 animate-pulse'
+                                                                    : roomData.arena.simonsays?.phase === 'WATCH' 
+                                                                        ? 'bg-indigo-900 border-indigo-400 text-indigo-200 animate-pulse' 
+                                                                        : 'bg-emerald-900 border-emerald-400 text-emerald-200 animate-bounce'
+                                                            }`}>
+                                                                {roomData.arena.simonsays?.phase === 'COUNTDOWN' 
+                                                                    ? 'PREPARATI...' 
+                                                                    : roomData.arena.simonsays?.phase === 'WATCH' 
+                                                                        ? 'OSSERVA...' 
+                                                                        : 'RIPETI!'}
                                                             </div>
-                                                            <div className="grid grid-cols-2 gap-1.5 md:gap-2 bg-slate-800 p-2 md:p-3 rounded-full shadow-[0_0_30px_rgba(0,0,0,0.5)] border-4 border-slate-700 w-32 h-32 md:w-48 md:h-48">
+                                                            <div className="grid grid-cols-2 gap-1.5 md:gap-2 bg-slate-800 p-2 md:p-3 rounded-full shadow-[0_0_30px_rgba(0,0,0,0.5)] border-4 border-slate-700 w-32 h-32 md:w-48 md:h-48 relative">
+                                                                {countdownText && (
+                                                                    <div className="absolute inset-0 flex items-center justify-center z-20">
+                                                                        <span className="text-5xl md:text-7xl font-black text-white drop-shadow-[0_0_15px_rgba(0,0,0,1)] animate-ping">{countdownText}</span>
+                                                                    </div>
+                                                                )}
                                                                 {SIMON_COLORS.map((col, idx) => (
                                                                     <div
                                                                         key={idx}
@@ -1640,6 +1767,11 @@
                                     {roomData.winnerId && roomData.players[roomData.winnerId] && (() => {
                                         const winner = roomData.players[roomData.winnerId];
                                         const char = CHARACTERS.find(c => c.id === winner.characterId);
+                                        const winnerRankInfo = getRank(winner.rr !== undefined ? winner.rr : 200);
+                                        const winnerBorder = roomData.config.isCompetitive 
+                                            ? `${winnerRankInfo.border} ${winnerRankInfo.shadow} ${winnerRankInfo.extra || ''}`
+                                            : 'border-white/50 shadow-[0_0_40px_rgba(255,255,255,0.2)]';
+
                                         return (
                                             <div className="flex flex-col items-center bg-slate-800/80 p-8 rounded-3xl border border-slate-600 shadow-2xl relative mt-4">
                                                 
@@ -1647,7 +1779,7 @@
                                                     <div className="absolute -top-4 right-4 animate-bounce"><RankBadge rr={winner.rr} /></div>
                                                 )}
 
-                                                <div className={`w-40 h-40 rounded-3xl ${char.color} flex items-center justify-center p-2 border-4 border-white/50 mb-4 shadow-[0_0_40px_rgba(255,255,255,0.2)]`}>
+                                                <div className={`w-40 h-40 rounded-3xl ${char.color} flex items-center justify-center p-2 border-4 ${winnerBorder} mb-4`}>
                                                     <img src={char.img} className="w-full h-full object-cover rounded-2xl" />
                                                 </div>
                                                 <p className={`text-4xl font-black ${winner.id === user.uid ? 'text-yellow-400' : 'text-white'}`}>
