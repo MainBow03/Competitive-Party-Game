@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Arena Party - Online Multiplayer</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Importmap per React, ReactDOM e Lucide -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.263.1"
+        }
+      }
+    </script>
+    
+    <!-- Babel per JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: rgba(30, 41, 59, 0.5); border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.8); border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 1); }
+      
+      body {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans overflow-hidden h-screen w-screen">
+    
+    <div id="root" class="h-full w-full"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Dices, User, Users, Play, Settings, Plus, Hash, 
+            Swords, Heart, HeartCrack, Trophy, ArrowRight, X, Copy, Check,
+            Gamepad2, Clock, Star, Activity, Bomb, Medal, BrainCircuit
+        } from 'lucide-react';
+        
+        // --- FIREBASE SDK ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteDoc, increment, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // Configurazione Firebase dell'Utente
+        const firebaseConfig = {
+            apiKey: "AIzaSyAIGyRjGZ9PzxdII1x0nKPXybRwoFTdpPQ",
+            authDomain: "battaglia-sfida.firebaseapp.com",
+            projectId: "battaglia-sfida",
+            storageBucket: "battaglia-sfida.firebasestorage.app",
+            messagingSenderId: "198912094682",
+            appId: "1:198912094682:web:229cd506dbc80a844a50e3",
+            measurementId: "G-8Z0S7T0XZ2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- CONFIGURAZIONI GLOBALI ---
+        const BOT_NAMES = ['Bot_Alfa', 'Bot_Beta', 'Bot_Gamma', 'Bot_Delta', 'Bot_Epsilon', 'Bot_Zeta', 'Bot_Sigma', 'Bot_Omega'];
+        const COMPETITIVE_BOT_NAMES = ['Kyle', 'Marta', 'Gennaro', 'Luca', 'Rosa Maria', 'Delia', 'Marissa', 'Dan', 'Gale', 'Mario', 'Paolo', 'James', 'Terra', 'Pant', 'Piedone', 'Mt.'];
+
+        // --- SISTEMA DI RANKING ---
+        const RANKS = [
+            { name: "Ferro 1", minRR: 0, text: "text-slate-500", bg: "bg-slate-500" },
+            { name: "Ferro 2", minRR: 100, text: "text-slate-400", bg: "bg-slate-400" },
+            { name: "Ferro 3", minRR: 200, text: "text-slate-300", bg: "bg-slate-300" },
+            { name: "Bronzo", minRR: 300, text: "text-amber-700", bg: "bg-amber-700" },
+            { name: "Argento", minRR: 400, text: "text-gray-300", bg: "bg-gray-300" },
+            { name: "Oro", minRR: 500, text: "text-yellow-400", bg: "bg-yellow-400" },
+            { name: "Platino", minRR: 600, text: "text-cyan-300", bg: "bg-cyan-300" },
+            { name: "Diamante", minRR: 700, text: "text-purple-400", bg: "bg-purple-400" },
+            { name: "Smeraldo", minRR: 800, text: "text-emerald-400", bg: "bg-emerald-400" },
+            { name: "Solare", minRR: 900, text: "text-orange-500", bg: "bg-orange-500" },
+            { name: "Cosmico", minRR: 1000, text: "text-fuchsia-500", bg: "bg-fuchsia-500" }
+        ];
+
+        function getRank(rr) {
+            let currentRank = RANKS[0];
+            for (let rank of RANKS) {
+                if (rr >= rank.minRR) {
+                    currentRank = rank;
+                } else {
+                    break;
+                }
+            }
+            return currentRank;
+        }
+
+        const RankBadge = ({ rr }) => {
+            const rankInfo = getRank(rr !== undefined ? rr : 200);
+            return (
+                <span className={`px-1.5 py-0.5 rounded-md border border-current text-[8px] md:text-[9px] font-black uppercase tracking-widest bg-slate-900/90 shadow-md ${rankInfo.text} shrink-0`}>
+                    {rankInfo.name}
+                </span>
+            );
+        };
+
+        function calculateRRChange(placement) {
+            if (placement === 8 || placement === 7) return - (Math.floor(Math.random() * 6) + 15);
+            if (placement === 6) return -10;
+            if (placement === 5) return - (Math.floor(Math.random() * 5) + 1);
+            if (placement === 4) return Math.floor(Math.random() * 2) + 1;
+            if (placement === 3) return Math.floor(Math.random() * 7) + 6;
+            if (placement === 2) return Math.floor(Math.random() * 8) + 13;
+            if (placement === 1) return Math.floor(Math.random() * 10) + 21;
+            return 0;
+        }
+
+        // --- LISTA COMPLETA PERSONAGGI ---
+        const RAW_CHARACTERS = [
+            { name: "Marinette", img: "https://i.pinimg.com/736x/b8/74/55/b87455575cd069609007a639c9490293.jpg" },
+            { name: "Adrien", img: "https://i.pinimg.com/1200x/5c/2d/c7/5c2dc740ed2fe906b6afaf1320bf4273.jpg" },
+            { name: "Alya", img: "https://i.pinimg.com/736x/3e/3b/99/3e3b99fc26e6b2cb8bf7359c53acca24.jpg" },
+            { name: "Argos", img: "https://i.pinimg.com/736x/61/a0/d7/61a0d70a9cba0c930bb2ed13e95f6e87.jpg" },
+            { name: "Heartfixer", img: "https://i.pinimg.com/736x/fe/82/7c/fe827caedc137c8832fd7b313209cc55.jpg" },
+            { name: "Chrysalis", img: "https://i.pinimg.com/736x/c1/8e/6a/c18e6a45d98eee60c330d37bb2f4e562.jpg" },
+            { name: "Nathalie", img: "https://i.pinimg.com/736x/ad/8e/68/ad8e68f410c0379c3b5412b8afeef3dc.jpg" },
+            { name: "Luka", img: "https://i.pinimg.com/736x/16/40/f3/1640f3c6c2b14e00c110316e02e86c7f.jpg" },
+            { name: "Kagami", img: "https://i.pinimg.com/736x/56/e2/ad/56e2adc6421c613a6d00b393abd1a6c1.jpg" },
+            { name: "Re Julien", img: "https://i.pinimg.com/736x/1e/17/19/1e17194ef5b383e4202fbb4875cfbd81.jpg" },
+            { name: "Mortino", img: "https://i.pinimg.com/736x/b9/56/ec/b956ec4741a1ba90c7176478e203f78b.jpg" },
+            { name: "Skipper", img: "https://i.pinimg.com/736x/e6/f0/5b/e6f05b20dda962344721db983c882679.jpg" },
+            { name: "Rico", img: "https://i.pinimg.com/736x/a8/fe/a5/a8fea5d9ce18a230a1ea6b996cef8bb8.jpg" },
+            { name: "Kowalski", img: "https://i.pinimg.com/736x/e7/bc/38/e7bc382c57bfb2f3de7f44a0cce39fcd.jpg" },
+            { name: "Soldato", img: "https://i.pinimg.com/1200x/5e/3f/0d/5e3f0d06b262dc18869f550806d1bdb4.jpg" },
+            { name: "Gwen", img: "https://i.pinimg.com/1200x/7d/21/31/7d2131c0b714ee83c941a59ed55a820b.jpg" },
+            { name: "Julia", img: "https://i.pinimg.com/1200x/a1/ef/d7/a1efd74f161fa4041cbc6b75bfd9e6b5.jpg" },
+            { name: "Duncan", img: "https://i.pinimg.com/736x/3f/2d/e1/3f2de1cd71448e1413ab3ccafbed5b4d.jpg" },
+            { name: "Heather", img: "https://i.pinimg.com/736x/81/5b/b6/815bb632721e7d38f26d35801466dd30.jpg" },
+            { name: "Alejandro", img: "https://i.pinimg.com/736x/42/68/90/42689043c52c2a7402ab46de85988ff1.jpg" },
+            { name: "Owen", img: "https://i.pinimg.com/1200x/d8/67/6b/d8676b6ca40fa5a14aabace2a6542a39.jpg" },
+            { name: "Lightning", img: "https://i.pinimg.com/736x/44/af/e7/44afe7a858a67cbd1458cebee28693aa.jpg" },
+            { name: "Courtney", img: "https://i.pinimg.com/736x/ad/94/34/ad9434468d4a502c89ea01c0249e8899.jpg" },
+            { name: "Lindsay", img: "https://i.pinimg.com/736x/d7/bf/82/d7bf8237867c96050d1244518ce1ffef.jpg" },
+            { name: "Bowie", img: "https://i.pinimg.com/1200x/03/6c/0f/036c0ffe4fcd39d5840ed60a2fb104c3.jpg" },
+            { name: "Raj", img: "https://i.pinimg.com/736x/05/b2/97/05b297c32cd4507adbd7b0c7ce84fb3a.jpg" },
+            { name: "Conan", img: "https://i.pinimg.com/736x/19/fe/f0/19fef0cf0b848e1f5fe54d9b641af4ce.jpg" },
+            { name: "Ran", img: "https://i.pinimg.com/1200x/46/ee/c7/46eec75f3a3eeb4846216dfdd7083ff4.jpg" },
+            { name: "Rias", img: "https://i.pinimg.com/736x/d1/a7/df/d1a7df7bfe5769c39e9b66041144e4eb.jpg" },
+            { name: "Bayonetta", img: "https://i.pinimg.com/1200x/60/fc/c0/60fcc064dc97d24b96a9517f726c1970.jpg" },
+            { name: "Yoshi", img: "https://i.pinimg.com/736x/f3/05/7f/f3057f14de68b0afe682ffe93dcc479b.jpg" },
+            { name: "Rosalinda", img: "https://i.pinimg.com/736x/09/14/f0/0914f029e712e92de9d4f0081a5da032.jpg" },
+            { name: "Peach", img: "https://i.pinimg.com/736x/c0/53/fb/c053fb4dd4f8c0dd9c277212490b1962.jpg" },
+            { name: "Luigi", img: "https://i.pinimg.com/1200x/21/30/94/213094c8273db9b3d9dcb4cb407d6d63.jpg" },
+            { name: "Daisy", img: "https://i.pinimg.com/736x/e2/47/61/e2476198364b030d3a8f9a1f93becfb9.jpg" },
+            { name: "Pauline", img: "https://i.pinimg.com/736x/86/83/ee/8683ee7c89735311e61addebf517a3de.jpg" },
+            { name: "Wario", img: "https://i.pinimg.com/736x/2f/ea/be/2feabe47151fd436fbf358c299eb4870.jpg" },
+            { name: "Waluigi", img: "https://i.pinimg.com/736x/68/2b/61/682b611cb8b1b9eca045cc801e5ed25f.jpg" },
+            { name: "Bowser", img: "https://i.pinimg.com/1200x/cf/3f/ec/cf3fec1f6b9334e0255065f150fa97a9.jpg" },
+            { name: "Bowser Jr", img: "https://i.pinimg.com/736x/ad/0d/5b/ad0d5b353c121423ac8c5aa430112374.jpg" },
+            { name: "Brago", img: "https://i.pinimg.com/736x/c6/75/2d/c6752dab1b78e4c4adc64b6ffd09b755.jpg" },
+            { name: "Ponygon", img: "https://i.pinimg.com/736x/53/e4/fb/53e4fb1c1f8964ca949c4e72663edd8f.jpg" },
+            { name: "Zatch Bell", img: "https://i.pinimg.com/736x/9c/64/41/9c6441a65ad0c75dbf8eaee194659acf.jpg" },
+            { name: "Kiyo", img: "https://i.pinimg.com/736x/ce/7d/29/ce7d2973b4fbc1fe3a8498a1eb505b17.jpg" },
+            { name: "Folgore", img: "https://i.pinimg.com/736x/e4/8f/1b/e48f1bb1d1715aac45802a2c8944f1ff.jpg" },
+            { name: "Tio", img: "https://i.pinimg.com/736x/ea/f3/30/eaf3305c1cb5b8d7475da20687b0ec40.jpg" },
+            { name: "Penny", img: "https://i.pinimg.com/736x/f5/c2/17/f5c21738d5b922e6108b7b72bc33a25b.jpg" },
+            { name: "Steven", img: "https://i.pinimg.com/736x/2b/fd/20/2bfd202ab782611ea6a0fb0cdcdc37ab.jpg" },
+            { name: "Perla", img: "https://i.pinimg.com/736x/59/e8/b6/59e8b66977255dc52fd925228a5cf86e.jpg" },
+            { name: "Perla Gialla", img: "https://i.pinimg.com/736x/4a/98/18/4a98187cb864ce0097f5809989f605d6.jpg" },
+            { name: "Perla Rosa", img: "https://i.pinimg.com/736x/59/33/86/59338619f5f15ec7672a0921e5fe5cf6.jpg" },
+            { name: "Garnet", img: "https://i.pinimg.com/736x/3f/8a/05/3f8a05bdbc4a7622f521eb294f51d4c8.jpg" },
+            { name: "Corvina GO", img: "https://i.pinimg.com/736x/92/91/db/9291dbef281abc1f05e709c94fe17eba.jpg" },
+            { name: "Corvina TT", img: "https://i.pinimg.com/736x/b8/09/d1/b809d102bfdc848380a4d73e94fe7769.jpg" },
+            { name: "Stellarubia GO", img: "https://i.pinimg.com/736x/b8/7f/35/b87f358405b6d516a3e6321709aa4884.jpg" },
+            { name: "Cyborg TT", img: "https://i.pinimg.com/736x/73/47/3c/73473c2ae7c39cf56a81d8c58ef2b153.jpg" },
+            { name: "BeastBoy TT", img: "https://i.pinimg.com/736x/26/f4/55/26f455cbc9893aa45da15904c8a45bdd.jpg" },
+            { name: "Robin TT", img: "https://i.pinimg.com/736x/cd/57/18/cd57186e05d47ef5f75bef6f0a33f59c.jpg" },
+            { name: "Nightwing", img: "https://i.pinimg.com/736x/47/bc/ce/47bcceac6b573a1b8277b6a75f0a4b55.jpg" },
+            { name: "Robin GO", img: "https://i.pinimg.com/736x/92/b6/50/92b650adbe57c5cec55a3ef46b65e933.jpg" },
+            { name: "Johnny Bravo", img: "https://i.pinimg.com/736x/4a/62/70/4a6270678f7adcf130672bcd0af41fdf.jpg" },
+            { name: "Daphne", img: "https://i.pinimg.com/736x/aa/91/39/aa9139e32492a07712926dbd0db0b521.jpg" },
+            { name: "Shaggy", img: "https://i.pinimg.com/1200x/0e/46/70/0e46703bcf03ff84420b0b71474c9ed7.jpg" },
+            { name: "Fred", img: "https://i.pinimg.com/736x/d2/8c/36/d28c36ac805792e5624f41c3c19dcebb.jpg" },
+            { name: "Velma", img: "https://i.pinimg.com/736x/2d/58/ff/2d58fffc72c416245a2768b455c177af.jpg" },
+            { name: "Francine", img: "https://i.pinimg.com/736x/b3/b5/f6/b3b5f6849a52b4daed92424650a98f7f.jpg" },
+            { name: "Hayley", img: "https://i.pinimg.com/originals/9d/58/70/9d58707a635942c60ee7fd1afc8403bd.gif" },
+            { name: "Stan", img: "https://i.pinimg.com/736x/cc/48/c0/cc48c09c661d4f9af432a37c6b908e41.jpg" },
+            { name: "Stewie", img: "https://i.pinimg.com/1200x/1e/a2/cc/1ea2cc7a197e3841086f4a1ce18b089c.jpg" },
+            { name: "Lois", img: "https://i.pinimg.com/736x/6e/f7/42/6ef74238d3938c8e02f62c54fa7fb4c5.jpg" },
+            { name: "Peter", img: "https://i.pinimg.com/736x/9e/40/74/9e4074bbe7890cd245b51b9ff5c0e33c.jpg" },
+            { name: "Fry", img: "https://i.pinimg.com/736x/d6/f4/ac/d6f4acc1bfae65c673b4b5e02a89ce71.jpg" },
+            { name: "Leela", img: "https://i.pinimg.com/736x/e9/b2/71/e9b27128376e5b5f23aaafdc9956bd50.jpg" },
+            { name: "Kim", img: "https://i.pinimg.com/736x/5d/7d/55/5d7d55fec8f9d8fb81e9db4438235f71.jpg" },
+            { name: "Tess", img: "https://i.pinimg.com/736x/3f/bc/a9/3fbca9cb61b70f4d58c83598f0236764.jpg" },
+            { name: "Hunter", img: "https://i.pinimg.com/736x/0d/f2/73/0df2731820fb9f74774f5e8607556625.jpg" },
+            { name: "Jake DC", img: "https://i.pinimg.com/736x/bc/a0/76/bca0765eaa0f1e88b0070a5b92c22de7.jpg" },
+            { name: "Tom", img: "https://i.pinimg.com/736x/c2/21/a8/c221a8a2ae866afe53a53843efcfc05c.jpg" },
+            { name: "Aiden", img: "https://i.pinimg.com/736x/c8/f3/df/c8f3dfa06d4270eaf3a323d6230cf963.jpg" },
+            { name: "Bloom", img: "https://i.pinimg.com/1200x/82/75/ea/8275ea943107e01992901cfbdc5f9c33.jpg" },
+            { name: "Ashley", img: "https://i.pinimg.com/736x/d1/c5/5f/d1c55f57218baecf0c2e160155e80c61.jpg" },
+            { name: "Grett", img: "https://i.pinimg.com/736x/fa/fb/5d/fafb5de75578a12b0eb2eb5efb035d23.jpg" },
+            { name: "Fiore", img: "https://i.pinimg.com/736x/78/79/43/787943ad5e0e1991f0a8f30189d0969f.jpg" },
+            { name: "Ally", img: "https://i.pinimg.com/736x/58/a8/e6/58a8e6232e4e38ca2a867f208c1b83fa.jpg" },
+            { name: "Isabelle", img: "https://i.pinimg.com/736x/5e/1a/f6/5e1af69ac6196b02e015133b3de84fd3.jpg" },
+            { name: "Anastasia", img: "https://i.pinimg.com/736x/56/e5/52/56e552315c56b809d3978914d294ad34.jpg" },
+            { name: "Robot Boy", img: "https://i.pinimg.com/736x/91/d3/42/91d342072cae0214447bf8c362d9e02e.jpg" },
+            { name: "Timmy", img: "https://i.pinimg.com/736x/91/de/1b/91de1b5b1897a71a36957191623af776.jpg" },
+            { name: "Cosmo", img: "https://i.pinimg.com/1200x/3e/66/72/3e667202130fb974cfecb27b3f46c64a.jpg" },
+            { name: "Wanda", img: "https://i.pinimg.com/1200x/48/2e/c9/482ec974f07d0e9afdc462263f6235f9.jpg" },
+            { name: "Pery", img: "https://i.pinimg.com/736x/94/4e/1b/944e1b48effe0ad848788a949aed13c5.jpg" },
+            { name: "Hazel", img: "https://i.pinimg.com/736x/9a/e2/34/9ae2349f370a6455bd694d5d160457d8.jpg" },
+            { name: "Trixie", img: "https://i.pinimg.com/736x/05/08/a7/0508a771507d83f2b52a97467f57d581.jpg" },
+            { name: "Vicky", img: "https://i.pinimg.com/1200x/f5/1f/2e/f51f2e0bff74df3173b110f24943a6fc.jpg" },
+            { name: "Finn", img: "https://i.pinimg.com/736x/7e/0b/c9/7e0bc9826a7652264f32a44bc8a40ede.jpg" },
+            { name: "Fiona", img: "https://i.pinimg.com/1200x/0b/9d/85/0b9d85c6c70be88471ad753b014de88b.jpg" },
+            { name: "Jake", img: "https://i.pinimg.com/1200x/cd/77/22/cd7722b2f98ffc75d1128913df6861d7.jpg" },
+            { name: "Cake", img: "https://i.pinimg.com/736x/70/6c/08/706c08681ae007b24d103c44910431c1.jpg" },
+            { name: "Re Ghiaccio", img: "https://i.pinimg.com/736x/63/11/d2/6311d2bddf8b2672df70a957bea7a93d.jpg" },
+            { name: "Gommarosa", img: "https://i.pinimg.com/736x/6e/d9/f3/6ed9f3e6206e8ea0f26bf6da6529b22b.jpg" },
+            { name: "Marceline", img: "https://i.pinimg.com/736x/3a/58/7d/3a587db4bdc947c7d3458dc9582af9cd.jpg" },
+            { name: "Zoey", img: "https://i.pinimg.com/736x/48/53/3e/48533edc4b5054ec0a7bca17130f22af.jpg" },
+            { name: "Rochelle", img: "https://i.pinimg.com/736x/bb/56/ed/bb56ed9fa63be897ba67032706d75cc7.jpg" },
+            { name: "Ellis", img: "https://i.pinimg.com/736x/be/58/d5/be58d584da6dfa953ec9be2bd0ac94ac.jpg" },
+            { name: "Tanjiro", img: "https://i.pinimg.com/736x/e9/6d/20/e96d20e7c159897a05c6baa57fac7f35.jpg" },
+            { name: "Hinosuke", img: "https://i.pinimg.com/1200x/cf/d8/27/cfd82718c3f40c906665a0d680196439.jpg" },
+            { name: "Zenitsu", img: "https://i.pinimg.com/1200x/91/12/9d/91129dee62e996da6313160605cb514d.jpg" },
+            { name: "Nezuko", img: "https://i.pinimg.com/1200x/72/b7/56/72b756ee900c26b3e616ba439e1f05c2.jpg" },
+            { name: "Shinobu", img: "https://i.pinimg.com/736x/8b/71/a5/8b71a53282f08aea93f83852a01e4e44.jpg" },
+            { name: "Tengen", img: "https://i.pinimg.com/736x/33/ef/07/33ef07083eb82a6e314b32b2d6e72295.jpg" },
+            { name: "Aang", img: "https://i.pinimg.com/736x/21/c6/02/21c60273e7409b871140d5cee2cace5b.jpg" },
+            { name: "Zuko", img: "https://i.pinimg.com/736x/1d/3f/9e/1d3f9e62fdc463541fb404840372c3a4.jpg" },
+            { name: "Azula", img: "https://i.pinimg.com/1200x/1f/e1/ca/1fe1ca1b65f53387496522b0df72831e.jpg" },
+            { name: "Sephiroth", img: "https://i.pinimg.com/1200x/2f/5d/28/2f5d281e60a0a595a941a15ef3b5a454.jpg" },
+            { name: "Katara", img: "https://i.pinimg.com/736x/88/3b/a4/883ba48c5727d96962d2a93536f04c17.jpg" },
+            { name: "Toph", img: "https://i.pinimg.com/736x/ac/0e/6c/ac0e6c1b3329b309d09cb44e968a41d7.jpg" },
+            { name: "Sokka", img: "https://i.pinimg.com/736x/61/a7/91/61a7919a2c2df87b0106a425c031b9ca.jpg" }
+        ];
+
+        const COLORS = [
+            'bg-purple-500', 'bg-orange-500', 'bg-amber-600', 'bg-pink-500', 
+            'bg-emerald-500', 'bg-sky-500', 'bg-red-500', 'bg-lime-500',
+            'bg-indigo-500', 'bg-teal-500', 'bg-cyan-500', 'bg-rose-500'
+        ];
+
+        // --- SIMON SAYS CONFIG ---
+        const SIMON_COLORS = [
+            { bg: 'bg-green-500', glow: 'shadow-[0_0_30px_rgba(34,197,94,1)]', shape: 'rounded-tl-[3rem] md:rounded-tl-[4rem]' }, // Top-Left
+            { bg: 'bg-red-500', glow: 'shadow-[0_0_30px_rgba(239,68,68,1)]', shape: 'rounded-tr-[3rem] md:rounded-tr-[4rem]' }, // Top-Right
+            { bg: 'bg-yellow-400', glow: 'shadow-[0_0_30px_rgba(250,204,21,1)]', shape: 'rounded-bl-[3rem] md:rounded-bl-[4rem]' }, // Bottom-Left
+            { bg: 'bg-blue-500', glow: 'shadow-[0_0_30px_rgba(59,130,246,1)]', shape: 'rounded-br-[3rem] md:rounded-br-[4rem]' }  // Bottom-Right
+        ];
+
+        const CHARACTERS = RAW_CHARACTERS.map((char, index) => {
+            const colorClass = COLORS[index % COLORS.length];
+            const colorName = colorClass.split('-')[1];
+            return {
+                id: `c${index + 1}`,
+                name: char.name,
+                img: char.img.trim(),
+                color: colorClass,
+                shadow: `shadow-${colorName}-500/50`
+            };
+        });
+
+        // --- COMPONENTE PRINCIPALE ---
+        function App() {
+            const [user, setUser] = useState(null);
+            const [userStats, setUserStats] = useState(null);
+            const [playerName, setPlayerName] = useState('');
+            const [uiState, setUiState] = useState('LOADING'); 
+            const [joinCode, setJoinCode] = useState('');
+            const [errorMsg, setErrorMsg] = useState('');
+            const [rouletteIds, setRouletteIds] = useState([]);
+            const [myRRChange, setMyRRChange] = useState(null);
+            const [simonLit, setSimonLit] = useState(null); // Stato UI locale per animazioni Simon
+
+            const [roomId, setRoomId] = useState(null);
+            const [roomData, setRoomData] = useState(null);
+
+            const [lobbyConfig, setLobbyConfig] = useState({ maxPlayers: 4, startingLives: 4, isCompetitive: false });
+
+            const processedGamesRef = useRef(new Set());
+            const arenaStartTimeRef = useRef(null);
+            const handledRoundRef = useRef(-1); 
+            const botMoveCountRef = useRef(''); // Cambiato a stringa per gestire id complessi (es. per Simon)
+
+            // 1. Auth Init & Stats Listener
+            useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                    if (currentUser) {
+                        setUser(currentUser);
+                        setUiState('NAME_INPUT');
+                    } else {
+                        signInAnonymously(auth).catch(err => {
+                            console.error("Auth error", err);
+                            setErrorMsg("Errore: Abilita l'Autenticazione Anonima su Firebase!");
+                            setUiState('ERROR');
+                        });
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
+
+            // 1.b Ascolta statistiche utente
+            useEffect(() => {
+                if (!user) return;
+                const unsubStats = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.rr === undefined) {
+                            data.rr = 200;
+                            setDoc(doc(db, "users", user.uid), { rr: 200 }, { merge: true });
+                        }
+                        setUserStats(data);
+                    } else {
+                        const defaultStats = { gamesPlayed: 0, wins: 0, timePlayedSeconds: 0, characterUsage: {}, rr: 200 };
+                        setDoc(doc(db, "users", user.uid), defaultStats);
+                        setUserStats(defaultStats);
+                    }
+                });
+                return () => unsubStats();
+            }, [user]);
+
+            // 2. Room Listener
+            useEffect(() => {
+                if (!roomId || !user) return;
+                const unsub = onSnapshot(doc(db, "rooms", roomId), (document) => {
+                    if (document.exists()) {
+                        setRoomData(document.data());
+                    } else {
+                        setRoomId(null);
+                        setRoomData(null);
+                        setUiState('MAIN_MENU');
+                        setErrorMsg('La stanza è stata chiusa.');
+                        setTimeout(() => setErrorMsg(''), 3000);
+                    }
+                });
+                return () => unsub();
+            }, [roomId, user]);
+
+            // --- TRACCIAMENTO STATISTICHE E RR UMANI ---
+            useEffect(() => {
+                if (!roomData || !user || !userStats) return;
+
+                if (roomData.state === 'ARENA' && !arenaStartTimeRef.current) {
+                    arenaStartTimeRef.current = Date.now();
+                }
+
+                const myPlayer = roomData.players[user.uid];
+                const isGameOver = roomData.state === 'GAME_OVER';
+                const iAmWinner = isGameOver && roomData.winnerId === user.uid;
+
+                if (myPlayer?.placement && !processedGamesRef.current.has(roomData.id)) {
+                    processedGamesRef.current.add(roomData.id);
+
+                    let elapsedSeconds = 0;
+                    if (arenaStartTimeRef.current) {
+                        elapsedSeconds = Math.floor((Date.now() - arenaStartTimeRef.current) / 1000);
+                        arenaStartTimeRef.current = null;
+                    }
+
+                    const updates = {
+                        gamesPlayed: increment(1),
+                        timePlayedSeconds: increment(elapsedSeconds)
+                    };
+                    
+                    if (iAmWinner) updates.wins = increment(1);
+                    if (myPlayer.characterId) updates[`characterUsage.${myPlayer.characterId}`] = increment(1);
+
+                    if (roomData.config.isCompetitive && myPlayer.rrChange !== undefined) {
+                        setMyRRChange(myPlayer.rrChange);
+                        updates.rr = Math.max(0, (userStats.rr || 200) + myPlayer.rrChange);
+                    }
+
+                    updateDoc(doc(db, "users", user.uid), updates).catch(console.error);
+                }
+            }, [roomData, user, userStats]);
+
+            // --- MULTIPLAYER ACTIONS ---
+            
+            const createRoom = async () => {
+                if (!user || !playerName.trim()) return;
+                const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+                const initialData = {
+                    id: newRoomId,
+                    hostId: user.uid,
+                    state: 'CHAR_SELECT',
+                    config: lobbyConfig,
+                    players: {
+                        [user.uid]: {
+                            id: user.uid,
+                            name: playerName.trim(),
+                            isBot: false,
+                            characterId: null,
+                            lives: lobbyConfig.startingLives,
+                            isReady: false,
+                            rr: userStats?.rr !== undefined ? userStats.rr : 200
+                        }
+                    },
+                    arena: {
+                        challengerIds: [],
+                        matchState: 'WAITING',
+                        minigame: 'DICE',
+                        rolls: {},
+                        minesweeper: null,
+                        simonsays: null,
+                        round: 1
+                    },
+                    winnerId: null
+                };
+
+                await setDoc(doc(db, "rooms", newRoomId), initialData);
+                setRoomId(newRoomId);
+            };
+
+            const joinRoom = async () => {
+                if (!user || !playerName.trim() || !joinCode.trim()) return;
+                const code = joinCode.toUpperCase();
+                setRoomId(code);
+            };
+
+            useEffect(() => {
+                if (roomId && roomData && !roomData.players[user.uid]) {
+                    if (roomData.state !== 'CHAR_SELECT') {
+                        setRoomId(null);
+                        setErrorMsg('La partita è già iniziata!');
+                        setTimeout(() => setErrorMsg(''), 3000);
+                        return;
+                    }
+
+                    const currentPlayersCount = Object.keys(roomData.players).length;
+                    
+                    if (currentPlayersCount >= roomData.config.maxPlayers) {
+                        setRoomId(null);
+                        setErrorMsg('La stanza è piena!');
+                        setTimeout(() => setErrorMsg(''), 3000);
+                        return;
+                    }
+                    
+                    const newPlayers = { ...roomData.players };
+                    newPlayers[user.uid] = {
+                        id: user.uid,
+                        name: playerName.trim(),
+                        isBot: false,
+                        characterId: null,
+                        lives: roomData.config.startingLives || 4,
+                        isReady: false,
+                        rr: userStats?.rr !== undefined ? userStats.rr : 200
+                    };
+
+                    updateDoc(doc(db, "rooms", roomId), { players: newPlayers });
+                }
+            }, [roomData, roomId, user]);
+
+            const updateRoom = async (updates) => {
+                if (!roomId) return;
+                await updateDoc(doc(db, "rooms", roomId), updates);
+            };
+
+            // --- LOGICA HOST & ROUNDS ---
+            const isHost = roomData && user && roomData.hostId === user.uid;
+
+            const startNewRound = async (roomDataCurrent) => {
+                if (!isHost || !roomData) return;
+
+                const data = roomDataCurrent || roomData;
+                const alivePlayers = Object.values(data.players).filter(p => p.lives > 0);
+                
+                if (alivePlayers.length <= 1) {
+                    const updates = {
+                        state: 'GAME_OVER',
+                        winnerId: alivePlayers[0]?.id || null
+                    };
+                    
+                    if (alivePlayers[0]) {
+                        const winnerId = alivePlayers[0].id;
+                        updates[`players.${winnerId}.placement`] = 1;
+                        if (data.config.isCompetitive) {
+                            const rrChange = calculateRRChange(1);
+                            updates[`players.${winnerId}.rrChange`] = rrChange;
+                            
+                            if (alivePlayers[0].isBot) {
+                                const botRealName = alivePlayers[0].originalBotName;
+                                const currentBotRR = alivePlayers[0].rr || 200;
+                                const newBotRR = Math.max(0, currentBotRR + rrChange);
+                                setDoc(doc(db, "competitive_bots", botRealName), { rr: newBotRR }, { merge: true }).catch(console.error);
+                            }
+                        }
+                    }
+                    await updateRoom(updates);
+                    return;
+                }
+
+                const idx1 = Math.floor(Math.random() * alivePlayers.length);
+                let idx2 = Math.floor(Math.random() * alivePlayers.length);
+                while (idx1 === idx2) {
+                    idx2 = Math.floor(Math.random() * alivePlayers.length);
+                }
+
+                const c1 = alivePlayers[idx1].id;
+                const c2 = alivePlayers[idx2].id;
+
+                const minigameOptions = ['DICE', 'MINESWEEPER', 'SIMONSAYS'];
+                const minigameType = minigameOptions[Math.floor(Math.random() * minigameOptions.length)];
+                
+                let minesweeperData = null;
+                let simonsaysData = null;
+
+                if (minigameType === 'MINESWEEPER') {
+                    const board = Array(25).fill({ hasBomb: false, revealedBy: null });
+                    let bombsPlaced = 0;
+                    while(bombsPlaced < 3) {
+                        const idx = Math.floor(Math.random() * 25);
+                        if (!board[idx].hasBomb) {
+                            board[idx] = { hasBomb: true, revealedBy: null };
+                            bombsPlaced++;
+                        }
+                    }
+                    minesweeperData = { board, turn: c1, bombsFound: { [c1]: 0, [c2]: 0 }, moveCount: 0 };
+                } else if (minigameType === 'SIMONSAYS') {
+                    // Genera sequenza iniziale di 3
+                    simonsaysData = {
+                        sequence: [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)],
+                        phase: 'WATCH', // WATCH, PLAY
+                        progress: { [c1]: 0, [c2]: 0 }
+                    };
+                }
+
+                await updateRoom({
+                    state: 'ARENA',
+                    'arena.challengerIds': [c1, c2],
+                    'arena.matchState': 'CHOOSING_CHALLENGERS',
+                    'arena.minigame': minigameType,
+                    'arena.rolls': {},
+                    'arena.minesweeper': minesweeperData,
+                    'arena.simonsays': simonsaysData,
+                    'arena.round': (data.arena?.round || 0) + 1
+                });
+            };
+
+            const startGameWithBotsAndArena = async () => {
+                if (!isHost || !roomData) return;
+
+                const playersList = Object.values(roomData.players);
+                const humanPlayers = playersList.filter(p => !p.isBot);
+                const botsNeeded = roomData.config.maxPlayers - humanPlayers.length;
+
+                const takenChars = humanPlayers.map(p => p.characterId);
+                let availableChars = CHARACTERS.map(c => c.id).filter(id => !takenChars.includes(id));
+
+                const newPlayers = { ...roomData.players };
+
+                let botRRs = {};
+                let availableCompBots = [...COMPETITIVE_BOT_NAMES];
+                
+                if (roomData.config.isCompetitive) {
+                    try {
+                        const botsSnap = await getDocs(collection(db, "competitive_bots"));
+                        botsSnap.forEach(doc => {
+                            botRRs[doc.id] = doc.data().rr;
+                        });
+                    } catch (e) {
+                        console.error("Error fetching bots", e);
+                    }
+                }
+
+                for (let i = 0; i < botsNeeded; i++) {
+                    const botId = `bot_${Math.random().toString(36).substr(2, 9)}`;
+                    const randIdx = Math.floor(Math.random() * availableChars.length);
+                    const charId = availableChars.splice(randIdx, 1)[0];
+                    const charObj = CHARACTERS.find(c => c.id === charId);
+
+                    let botName, originalBotName, botRR;
+
+                    if (roomData.config.isCompetitive) {
+                        const randNameIdx = Math.floor(Math.random() * availableCompBots.length);
+                        botName = availableCompBots.splice(randNameIdx, 1)[0];
+                        originalBotName = botName;
+                        botRR = botRRs[botName] !== undefined ? botRRs[botName] : 200;
+                    } else {
+                        botName = charObj.name; 
+                        originalBotName = BOT_NAMES[i % BOT_NAMES.length];
+                        botRR = 200;
+                    }
+
+                    newPlayers[botId] = {
+                        id: botId,
+                        name: botName,
+                        isBot: true,
+                        characterId: charId,
+                        lives: roomData.config.startingLives || 4,
+                        isReady: true,
+                        rr: botRR,
+                        originalBotName: originalBotName
+                    };
+                }
+
+                const simulatedData = { ...roomData, players: newPlayers };
+                
+                await updateRoom({ players: newPlayers });
+                startNewRound(simulatedData);
+            };
+
+            // --- DECRETO SCONFITTA GLOBALE ---
+            const handleLoser = async (loserId, roundNum) => {
+                if (handledRoundRef.current === roundNum) return;
+                handledRoundRef.current = roundNum;
+
+                updateRoom({ 'arena.matchState': 'SHOW_RESULT' });
+                
+                setTimeout(async () => {
+                    const currentLives = roomData.players[loserId].lives;
+                    const newLives = currentLives - 1;
+                    const isDead = newLives === 0;
+
+                    const updates = { [`players.${loserId}.lives`]: newLives };
+                    
+                    if (isDead) {
+                        updates[`players.${loserId}.eliminatedInRound`] = roundNum;
+                        const aliveCount = Object.values(roomData.players).filter(p => p.lives > 0).length;
+                        updates[`players.${loserId}.placement`] = aliveCount; 
+                        
+                        if (roomData.config.isCompetitive) {
+                            const rrChange = calculateRRChange(aliveCount);
+                            updates[`players.${loserId}.rrChange`] = rrChange;
+
+                            if (roomData.players[loserId].isBot) {
+                                const botRealName = roomData.players[loserId].originalBotName;
+                                const currentBotRR = roomData.players[loserId].rr || 200;
+                                const newBotRR = Math.max(0, currentBotRR + rrChange);
+                                setDoc(doc(db, "competitive_bots", botRealName), { rr: newBotRR }, { merge: true }).catch(console.error);
+                            }
+                        }
+                    }
+
+                    await updateRoom(updates);
+
+                    const newPlayers = { ...roomData.players };
+                    newPlayers[loserId].lives = newLives;
+                    if (isDead) {
+                        newPlayers[loserId].eliminatedInRound = roundNum;
+                        newPlayers[loserId].placement = updates[`players.${loserId}.placement`];
+                        if (updates[`players.${loserId}.rrChange`] !== undefined) {
+                            newPlayers[loserId].rrChange = updates[`players.${loserId}.rrChange`];
+                        }
+                    }
+
+                    const simulatedData = { ...roomData, players: newPlayers };
+                    setTimeout(() => startNewRound(simulatedData), 2000);
+                }, 1500);
+            };
+
+            // --- ANIMAZIONE ROULETTE E TRANSIZIONE INIZIALE ---
+            useEffect(() => {
+                if (roomData?.state === 'ARENA' && roomData.arena.matchState === 'CHOOSING_CHALLENGERS') {
+                    const alive = Object.values(roomData.players).filter(p => p.lives > 0).map(p => p.id);
+                    if (alive.length < 2) return;
+                    
+                    const interval = setInterval(() => {
+                        const r1 = alive[Math.floor(Math.random() * alive.length)];
+                        let r2 = alive[Math.floor(Math.random() * alive.length)];
+                        while(r2 === r1 && alive.length > 1) r2 = alive[Math.floor(Math.random() * alive.length)];
+                        setRouletteIds([r1, r2]);
+                    }, 150);
+                    
+                    return () => clearInterval(interval);
+                } else {
+                    setRouletteIds([]);
+                }
+            }, [roomData?.state, roomData?.arena?.matchState, roomData?.players]);
+
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'CHOOSING_CHALLENGERS') return;
+                const timer = setTimeout(() => { updateRoom({ 'arena.matchState': 'WAITING_ACTION' }); }, 3000); 
+                return () => clearTimeout(timer);
+            }, [isHost, roomData?.state, roomData?.arena?.matchState]);
+
+            // --- LOGICA DADI ---
+            const rollMyDice = async (cId) => {
+                if (roomData.arena.rolls[cId]) return;
+                await updateRoom({ [`arena.rolls.${cId}`]: 'ROLLING' });
+                setTimeout(async () => {
+                    await updateRoom({ [`arena.rolls.${cId}`]: { result: Math.floor(Math.random() * 6) + 1 } });
+                }, 1000);
+            };
+
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'DICE') return;
+                
+                const cIds = roomData.arena.challengerIds;
+                cIds.forEach(cId => {
+                    const p = roomData.players[cId];
+                    if (p && p.isBot && roomData.arena.rolls[cId] === undefined) {
+                        updateRoom({ [`arena.rolls.${cId}`]: 'PRE_ROLL' }); 
+                        setTimeout(() => {
+                            updateRoom({ [`arena.rolls.${cId}`]: 'ROLLING' });
+                            setTimeout(() => {
+                                updateRoom({ [`arena.rolls.${cId}`]: { result: Math.floor(Math.random() * 6) + 1 } });
+                            }, 1000);
+                        }, 500 + Math.random() * 1500);
+                    }
+                });
+            }, [roomData]);
+
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'DICE') return;
+
+                const cIds = roomData.arena.challengerIds;
+                if (cIds.length === 2) {
+                    const roll1 = roomData.arena.rolls[cIds[0]];
+                    const roll2 = roomData.arena.rolls[cIds[1]];
+
+                    if (roll1?.result !== undefined && roll2?.result !== undefined) {
+                        const r1 = roll1.result;
+                        const r2 = roll2.result;
+                        let loserId = null;
+                        if (r1 < r2) loserId = cIds[0];
+                        else if (r2 < r1) loserId = cIds[1];
+
+                        if (loserId) {
+                            handleLoser(loserId, roomData.arena.round);
+                        } else {
+                            if (handledRoundRef.current === roomData.arena.round) return;
+                            handledRoundRef.current = roomData.arena.round;
+
+                            updateRoom({ 'arena.matchState': 'SHOW_RESULT' });
+                            setTimeout(() => startNewRound(roomData), 2000);
+                        }
+                    }
+                }
+            }, [roomData]);
+
+            // --- LOGICA CAMPO MINATO ---
+            const clickMinesweeperTile = async (idx) => {
+                if (roomData.arena.minigame !== 'MINESWEEPER' || roomData.arena.matchState !== 'WAITING_ACTION') return;
+                const ms = roomData.arena.minesweeper;
+                
+                if (ms.turn !== user.uid) return;
+                if (ms.board[idx].revealedBy !== null) return;
+
+                const isBomb = ms.board[idx].hasBomb;
+                const board = [...ms.board];
+                board[idx] = { hasBomb: isBomb, revealedBy: user.uid };
+
+                const newBombsFound = { ...ms.bombsFound };
+                if (isBomb) newBombsFound[user.uid]++;
+
+                let nextTurn = user.uid;
+                if (newBombsFound[user.uid] < 2) {
+                    nextTurn = user.uid === roomData.arena.challengerIds[0] ? roomData.arena.challengerIds[1] : roomData.arena.challengerIds[0];
+                }
+
+                await updateRoom({
+                    'arena.minesweeper.board': board,
+                    'arena.minesweeper.bombsFound': newBombsFound,
+                    'arena.minesweeper.turn': nextTurn,
+                    'arena.minesweeper.moveCount': ms.moveCount + 1
+                });
+            };
+
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'MINESWEEPER') return;
+
+                const ms = roomData.arena.minesweeper;
+                const turnId = ms.turn;
+                const p = roomData.players[turnId];
+
+                if (p && p.isBot && botMoveCountRef.current !== `ms_${ms.moveCount}` && ms.bombsFound[turnId] < 2) {
+                    botMoveCountRef.current = `ms_${ms.moveCount}`;
+
+                    setTimeout(() => {
+                        const board = [...ms.board];
+                        const unrevealed = board.map((c, i) => c.revealedBy === null ? i : -1).filter(i => i !== -1);
+                        
+                        if (unrevealed.length > 0) {
+                            const choice = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+                            const isBomb = board[choice].hasBomb;
+                            board[choice] = { hasBomb: isBomb, revealedBy: turnId };
+
+                            const newBombsFound = { ...ms.bombsFound };
+                            if (isBomb) newBombsFound[turnId]++;
+
+                            let nextTurn = turnId;
+                            if (newBombsFound[turnId] < 2) {
+                                nextTurn = turnId === roomData.arena.challengerIds[0] ? roomData.arena.challengerIds[1] : roomData.arena.challengerIds[0];
+                            }
+
+                            updateRoom({
+                                'arena.minesweeper.board': board,
+                                'arena.minesweeper.bombsFound': newBombsFound,
+                                'arena.minesweeper.turn': nextTurn,
+                                'arena.minesweeper.moveCount': ms.moveCount + 1
+                            });
+                        }
+                    }, 1000 + Math.random() * 1000);
+                }
+            }, [roomData]);
+
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'MINESWEEPER') return;
+                
+                const ms = roomData.arena.minesweeper;
+                const cIds = roomData.arena.challengerIds;
+                
+                if (ms.bombsFound[cIds[0]] >= 2) {
+                    handleLoser(cIds[0], roomData.arena.round);
+                } else if (ms.bombsFound[cIds[1]] >= 2) {
+                    handleLoser(cIds[1], roomData.arena.round);
+                }
+            }, [roomData]);
+
+            // --- LOGICA SIMON SAYS ---
+            
+            // Animazione Locale Simon (Client-side)
+            useEffect(() => {
+                if (roomData?.state === 'ARENA' && roomData.arena.minigame === 'SIMONSAYS' && roomData.arena.matchState === 'WAITING_ACTION') {
+                    const ss = roomData.arena.simonsays;
+                    if (ss && ss.phase === 'WATCH') {
+                        let step = 0;
+                        const interval = setInterval(() => {
+                            if (step < ss.sequence.length) {
+                                setSimonLit(ss.sequence[step]);
+                                setTimeout(() => setSimonLit(null), 400); // 400ms acceso
+                                step++;
+                            } else {
+                                clearInterval(interval);
+                            }
+                        }, 800); // Passo di 800ms
+                        
+                        return () => {
+                            clearInterval(interval);
+                            setSimonLit(null);
+                        };
+                    } else {
+                        setSimonLit(null);
+                    }
+                }
+            }, [roomData?.arena?.simonsays?.phase, roomData?.arena?.simonsays?.sequence?.length, roomData?.arena?.matchState]);
+
+            // Host gestisce Fasi e Bot per Simon
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SIMONSAYS') return;
+                const ss = roomData.arena.simonsays;
+                if (!ss) return;
+
+                // 1. Passaggio da WATCH a PLAY
+                if (ss.phase === 'WATCH') {
+                    const totalWait = (ss.sequence.length * 800) + 1000;
+                    const timer = setTimeout(() => {
+                        updateRoom({ 'arena.simonsays.phase': 'PLAY' });
+                    }, totalWait);
+                    return () => clearTimeout(timer);
+                }
+
+                // 2. Controllo Completamento Livello (Tutti hanno finito)
+                if (ss.phase === 'PLAY') {
+                    const cIds = roomData.arena.challengerIds;
+                    
+                    if (ss.progress[cIds[0]] >= ss.sequence.length && ss.progress[cIds[1]] >= ss.sequence.length) {
+                        const nextSeq = [...ss.sequence, Math.floor(Math.random() * 4)];
+                        setTimeout(() => {
+                            updateRoom({
+                                'arena.simonsays.sequence': nextSeq,
+                                'arena.simonsays.phase': 'WATCH',
+                                'arena.simonsays.progress': { [cIds[0]]: 0, [cIds[1]]: 0 }
+                            });
+                        }, 1000);
+                        return; // Non far giocare i bot se stiamo passando di livello
+                    }
+
+                    // 3. Logica IA BOT
+                    cIds.forEach(cId => {
+                        const p = roomData.players[cId];
+                        const currentProg = ss.progress[cId] || 0;
+                        
+                        if (p && p.isBot && currentProg < ss.sequence.length) {
+                            const refKey = `simon_${cId}_${currentProg}_${ss.sequence.length}`;
+                            
+                            if (botMoveCountRef.current !== refKey) {
+                                botMoveCountRef.current = refKey;
+
+                                setTimeout(() => {
+                                    // Rileggi dati in caso di fine round improvvisa
+                                    if (roomData.arena.matchState !== 'WAITING_ACTION') return;
+
+                                    const correctColor = ss.sequence[currentProg];
+                                    
+                                    // Intelligenza: probabilità di sbagliare aumenta con la lunghezza della sequenza.
+                                    // Formula: 2% base + 3% per ogni elemento della sequenza totale attuale.
+                                    const failChance = 0.02 + (ss.sequence.length * 0.03); 
+                                    
+                                    let chosenColor = correctColor;
+                                    if (Math.random() < failChance) {
+                                        // Errore del Bot!
+                                        chosenColor = (correctColor + Math.floor(Math.random() * 3) + 1) % 4;
+                                    }
+
+                                    if (chosenColor === correctColor) {
+                                        updateRoom({ [`arena.simonsays.progress.${cId}`]: currentProg + 1 });
+                                    } else {
+                                        handleLoser(cId, roomData.arena.round);
+                                    }
+                                }, 700 + Math.random() * 600); // Tempo di reazione bot per premere un tasto
+                            }
+                        }
+                    });
+                }
+            }, [roomData]);
+
+            // Giocatore Reale clicca un colore
+            const clickSimonColor = async (idx) => {
+                if (roomData.arena.minigame !== 'SIMONSAYS' || roomData.arena.matchState !== 'WAITING_ACTION') return;
+                const ss = roomData.arena.simonsays;
+                
+                if (ss.phase !== 'PLAY') return;
+                if (!roomData.arena.challengerIds.includes(user.uid)) return; // Non è in gioco
+
+                const myProg = ss.progress[user.uid] || 0;
+                if (myProg >= ss.sequence.length) return; // Ha già finito la sequenza di questo turno
+
+                // Feedback visivo immediato per l'utente
+                setSimonLit(idx);
+                setTimeout(() => setSimonLit(null), 200);
+
+                if (idx === ss.sequence[myProg]) {
+                    // Corretto!
+                    await updateRoom({ [`arena.simonsays.progress.${user.uid}`]: myProg + 1 });
+                } else {
+                    // Sbagliato, ha perso la vita
+                    handleLoser(user.uid, roomData.arena.round);
+                }
+            };
+
+
+            const leaveRoom = () => {
+                if (arenaStartTimeRef.current) arenaStartTimeRef.current = null;
+                setMyRRChange(null);
+                setRoomId(null);
+                setRoomData(null);
+                setUiState('MAIN_MENU');
+            };
+
+            // --- HELPER UI ---
+            const formatTime = (seconds) => {
+                if (!seconds) return "0 min";
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                if (h > 0) return `${h}h ${m}m`;
+                return `${m} min`;
+            };
+
+            let favChar = null;
+            let favCount = 0;
+            if (userStats?.characterUsage) {
+                Object.entries(userStats.characterUsage).forEach(([charId, count]) => {
+                    if (count > favCount) {
+                        favCount = count;
+                        favChar = CHARACTERS.find(c => c.id === charId);
+                    }
+                });
+            }
+
+            // --- SCHERMATE UI BASE ---
+
+            if (uiState === 'LOADING') {
+                return <div className="flex h-full items-center justify-center"><div className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin"></div></div>;
+            }
+
+            if (uiState === 'ERROR') {
+                return (
+                    <div className="flex flex-col h-full items-center justify-center space-y-4 p-8 text-center relative z-10">
+                        <X className="w-20 h-20 text-red-500 animate-bounce" />
+                        <h1 className="text-3xl font-bold text-white">Ops, qualcosa è andato storto!</h1>
+                        <p className="text-slate-400 max-w-md">{errorMsg}</p>
+                    </div>
+                );
+            }
+
+            if (!roomId || !roomData) {
+                // MENU PRINCIPALE
+                return (
+                    <div className="relative z-10 h-full w-full flex flex-col items-center justify-center space-y-6 overflow-y-auto py-8">
+                        {errorMsg && (
+                            <div className="absolute top-10 bg-red-500 text-white px-6 py-3 rounded-xl shadow-2xl font-bold animate-in slide-in-from-top flex items-center gap-2 z-50">
+                                <X className="w-5 h-5"/> {errorMsg}
+                            </div>
+                        )}
+                        <div className="fixed inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+                        <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_#0f172a_100%)] pointer-events-none"></div>
+
+                        {uiState === 'NAME_INPUT' && (
+                            <div className="bg-slate-800/80 p-8 rounded-3xl border border-slate-600 shadow-2xl backdrop-blur-sm text-center max-w-md w-full animate-in zoom-in z-10 mx-4">
+                                <Dices className="w-20 h-20 mx-auto text-yellow-400 mb-4 animate-bounce" />
+                                <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-2">Arena Party</h1>
+                                <p className="text-slate-300 mb-8 text-sm">Sopravvivi ai minigiochi online!</p>
+                                <input 
+                                    type="text" 
+                                    value={playerName}
+                                    onChange={(e) => setPlayerName(e.target.value)}
+                                    placeholder="Inserisci il tuo nome..." 
+                                    className="w-full bg-slate-900 border-2 border-slate-600 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-yellow-400 mb-6 text-center"
+                                    maxLength={15}
+                                />
+                                <button 
+                                    onClick={() => playerName.trim() && setUiState('MAIN_MENU')}
+                                    disabled={!playerName.trim()}
+                                    className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-3 px-6 rounded-xl transform transition hover:scale-105 active:scale-95 disabled:opacity-50"
+                                >Gioca Ora</button>
+                            </div>
+                        )}
+
+                        {uiState === 'MAIN_MENU' && (
+                            <div className="flex flex-col items-center justify-center animate-in slide-in-from-bottom-8 z-10 w-full px-4 max-w-4xl">
+                                <h2 className="text-3xl font-bold text-white mb-6 text-center">Bentornato, {playerName}!</h2>
+                                
+                                {/* DASHBOARD STATISTICHE E RANK */}
+                                {userStats && (() => {
+                                    const currentRR = userStats.rr || 0;
+                                    const rankInfo = getRank(currentRR);
+                                    const nextRank = RANKS.find(r => r.minRR > currentRR);
+                                    const progress = nextRank ? ((currentRR - rankInfo.minRR) / (nextRank.minRR - rankInfo.minRR)) * 100 : 100;
+
+                                    return (
+                                        <div className="w-full mb-8 bg-slate-800/80 p-6 rounded-3xl border border-slate-600 shadow-xl backdrop-blur-sm relative overflow-hidden">
+                                            <div className="absolute -right-10 -top-10 opacity-5 pointer-events-none"><Activity className="w-40 h-40" /></div>
+                                            <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Activity className="text-yellow-400 w-5 h-5"/> Profilo & Statistiche</h3>
+                                            
+                                            {/* RANK SUMMARY */}
+                                            <div className="bg-slate-900/80 p-6 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner mb-6 w-full relative overflow-hidden">
+                                                <div className={`absolute left-4 top-1/2 -translate-y-1/2 opacity-10`}><Medal className="w-24 h-24" /></div>
+                                                <div className={`absolute right-4 top-1/2 -translate-y-1/2 opacity-10`}><Medal className="w-24 h-24" /></div>
+                                                
+                                                <span className={`text-3xl md:text-4xl font-black ${rankInfo.text} uppercase tracking-widest drop-shadow-md z-10`}>{rankInfo.name}</span>
+                                                <span className="text-slate-300 font-bold mt-2 z-10 text-lg">{currentRR} RR</span>
+                                                
+                                                {nextRank ? (
+                                                    <div className="w-full max-w-sm bg-slate-800 rounded-full h-3 mt-4 overflow-hidden border border-slate-700 z-10 shadow-inner">
+                                                        <div className={`h-full ${rankInfo.bg} transition-all duration-1000 ease-out`} style={{width: `${progress}%`}}></div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-sm text-fuchsia-400 font-bold mt-3 z-10 uppercase tracking-widest animate-pulse">Rank Massimo Raggiunto!</span>
+                                                )}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
+                                                    <Gamepad2 className="text-sky-400 mb-1 w-6 h-6"/>
+                                                    <span className="text-2xl font-black text-white">{userStats.gamesPlayed || 0}</span>
+                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Partite Giocate</span>
+                                                </div>
+                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
+                                                    <Trophy className="text-yellow-400 mb-1 w-6 h-6"/>
+                                                    <span className="text-2xl font-black text-white">{userStats.wins || 0}</span>
+                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Vittorie</span>
+                                                </div>
+                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner">
+                                                    <Clock className="text-emerald-400 mb-1 w-6 h-6"/>
+                                                    <span className="text-xl font-black text-white">{formatTime(userStats.timePlayedSeconds)}</span>
+                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Tempo in Gioco</span>
+                                                </div>
+                                                <div className="bg-slate-900/80 p-4 rounded-2xl flex flex-col items-center justify-center border border-slate-700 shadow-inner overflow-hidden">
+                                                    {favChar ? (
+                                                        <>
+                                                            <img src={favChar.img} className="w-8 h-8 rounded-full object-cover border-2 border-pink-400 shadow-md"/>
+                                                            <span className="text-[10px] font-black text-white truncate w-full text-center mt-1">{favChar.name}</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Star className="text-pink-400 mb-1 w-6 h-6"/>
+                                                            <span className="text-xl font-black text-slate-500">-</span>
+                                                        </>
+                                                    )}
+                                                    <span className="text-[10px] text-slate-400 uppercase font-bold text-center mt-1">Preferito</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                                    <button 
+                                        onClick={() => setUiState('LOBBY_CREATE')}
+                                        className="bg-slate-800 border-2 border-yellow-500/50 p-8 rounded-3xl flex flex-col items-center justify-center group hover:-translate-y-2 transition-all shadow-xl"
+                                    >
+                                        <div className="bg-yellow-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-12 h-12 text-yellow-400" /></div>
+                                        <span className="text-xl font-bold text-white mb-2">Crea Partita</span>
+                                        <span className="text-sm text-slate-400 text-center">Ospita una stanza multiplayer</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => setUiState('JOIN_MODAL')}
+                                        className="bg-slate-800 border-2 border-sky-500/50 p-8 rounded-3xl flex flex-col items-center justify-center group hover:-translate-y-2 transition-all shadow-xl"
+                                    >
+                                        <div className="bg-sky-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Hash className="w-12 h-12 text-sky-400" /></div>
+                                        <span className="text-xl font-bold text-white mb-2">Unisciti</span>
+                                        <span className="text-sm text-slate-400 text-center">Entra tramite Codice Stanza</span>
+                                    </button>
+                                </div>
+                                <button onClick={() => setUiState('NAME_INPUT')} className="mt-8 text-slate-400 underline">Cambia Nome</button>
+                            </div>
+                        )}
+
+                        {uiState === 'LOBBY_CREATE' && (
+                             <div className="bg-slate-800/90 p-8 rounded-3xl border border-slate-600 shadow-2xl w-full max-w-md z-10 mx-4">
+                                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-yellow-400"/> Crea Stanza</h2>
+                                <div className="mb-6">
+                                    <label className="block text-sm text-slate-300 mb-2">Modalità di Gioco</label>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setLobbyConfig({...lobbyConfig, isCompetitive: false})} className={`flex-1 py-3 rounded-xl font-bold transition-all ${!lobbyConfig.isCompetitive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>Amichevole</button>
+                                        <button onClick={() => setLobbyConfig({...lobbyConfig, isCompetitive: true, maxPlayers: 8, startingLives: 3})} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${lobbyConfig.isCompetitive ? 'bg-rose-600 text-white shadow-[0_0_15px_rgba(225,29,72,0.5)]' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}><Swords className="w-5 h-5"/> Competitiva</button>
+                                    </div>
+                                </div>
+                                <div className="mb-6">
+                                    <label className="block text-sm text-slate-300 mb-2">Numero Sfidanti: {lobbyConfig.maxPlayers}</label>
+                                    <input type="range" min="2" max="8" value={lobbyConfig.maxPlayers} onChange={(e) => !lobbyConfig.isCompetitive && setLobbyConfig({...lobbyConfig, maxPlayers: parseInt(e.target.value)})} className={`w-full accent-yellow-400 ${lobbyConfig.isCompetitive ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={lobbyConfig.isCompetitive} />
+                                </div>
+                                <div className="mb-8">
+                                    <label className="block text-sm text-slate-300 mb-2">Vite Iniziali: {lobbyConfig.startingLives}</label>
+                                    <input type="range" min="1" max="5" value={lobbyConfig.startingLives} onChange={(e) => !lobbyConfig.isCompetitive && setLobbyConfig({...lobbyConfig, startingLives: parseInt(e.target.value)})} className={`w-full accent-red-500 ${lobbyConfig.isCompetitive ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={lobbyConfig.isCompetitive} />
+                                    <div className="flex justify-between text-xs text-slate-500 mt-1">
+                                        <span>1 Cuore</span><span>5 Cuori</span>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <button onClick={() => setUiState('MAIN_MENU')} className="flex-1 py-3 bg-slate-700 text-white rounded-xl">Annulla</button>
+                                    <button onClick={createRoom} className="flex-1 py-3 bg-yellow-500 text-slate-900 font-bold rounded-xl shadow-[0_0_15px_rgba(234,179,8,0.4)]">Avvia Lobby</button>
+                                </div>
+                             </div>
+                        )}
+
+                        {uiState === 'JOIN_MODAL' && (
+                             <div className="bg-slate-800/90 p-8 rounded-3xl border border-slate-600 shadow-2xl w-full max-w-md z-10 mx-4 text-center">
+                                <Hash className="w-16 h-16 mx-auto text-sky-400 mb-4" />
+                                <h2 className="text-2xl font-bold text-white mb-6">Inserisci Codice</h2>
+                                <input 
+                                    type="text" 
+                                    value={joinCode}
+                                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                                    placeholder="Es. AB12CD" 
+                                    className="w-full bg-slate-900 border-2 border-slate-600 rounded-xl px-4 py-3 text-white text-2xl tracking-widest uppercase focus:border-sky-400 mb-6 text-center"
+                                    maxLength={6}
+                                />
+                                <div className="flex gap-4">
+                                    <button onClick={() => setUiState('MAIN_MENU')} className="flex-1 py-3 bg-slate-700 text-white rounded-xl">Indietro</button>
+                                    <button onClick={joinRoom} disabled={!joinCode} className="flex-1 py-3 bg-sky-500 text-white font-bold rounded-xl disabled:opacity-50">Entra</button>
+                                </div>
+                             </div>
+                        )}
+                    </div>
+                );
+            }
+
+            // --- UI NELLA STANZA ---
+            const me = roomData.players[user.uid];
+            const playersList = Object.values(roomData.players);
+            
+            const humanPlayers = playersList.filter(p => !p.isBot);
+            const allHumansReady = humanPlayers.length > 0 && humanPlayers.every(p => p.isReady);
+
+            const alivePlayers = playersList.filter(p => p.lives > 0);
+            const deadPlayers = playersList.filter(p => p.lives === 0).sort((a, b) => (b.eliminatedInRound || 0) - (a.eliminatedInRound || 0));
+            const maxGameLives = roomData.config.startingLives || 4;
+
+            // Componenti Cuori
+            const Hearts = ({ count, max = 4 }) => (
+                <div className="flex gap-0.5">
+                    {[...Array(max)].map((_, i) => (
+                    i < count 
+                        ? <Heart key={i} className="w-3 h-3 md:w-3.5 md:h-3.5 text-red-500 fill-red-500 drop-shadow-[0_0_3px_rgba(239,68,68,0.8)]" /> 
+                        : <HeartCrack key={i} className="w-3 h-3 md:w-3.5 md:h-3.5 text-slate-700" />
+                    ))}
+                </div>
+            );
+
+            const BigHearts = ({ count, max = 4 }) => (
+                <div className="flex gap-1">
+                    {[...Array(max)].map((_, i) => (
+                    i < count 
+                        ? <Heart key={i} className="w-5 h-5 text-red-500 fill-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]" /> 
+                        : <HeartCrack key={i} className="w-5 h-5 text-slate-700" />
+                    ))}
+                </div>
+            );
+
+            // RENDER COMBATTENTE ARENA
+            const renderFighter = (cId, index, isChoosing) => {
+                const p = roomData.players[cId];
+                if (!p) return null;
+
+                const char = CHARACTERS.find(c => c.id === p.characterId);
+                const isMe = cId === user.uid;
+                
+                let isLoser = false;
+                let isWinner = false;
+
+                if (roomData.arena.matchState === 'SHOW_RESULT' && !isChoosing && roomData.arena.challengerIds.includes(cId)) {
+                    if (roomData.arena.minigame === 'DICE') {
+                        const r1 = roomData.arena.rolls[roomData.arena.challengerIds[0]]?.result;
+                        const r2 = roomData.arena.rolls[roomData.arena.challengerIds[1]]?.result;
+                        if (r1 !== undefined && r2 !== undefined) {
+                            const myResult = index === 0 ? r1 : r2;
+                            const otherResult = index === 0 ? r2 : r1;
+                            if (myResult < otherResult) isLoser = true;
+                            if (myResult > otherResult) isWinner = true;
+                        }
+                    } else if (roomData.arena.minigame === 'MINESWEEPER') {
+                        if (roomData.arena.minesweeper.bombsFound[cId] >= 2) isLoser = true;
+                        else isWinner = true;
+                    } else if (roomData.arena.minigame === 'SIMONSAYS') {
+                        // Simon Says Winner logic handled in handleLoser trigger, 
+                        // But for visual feedback: loser is the one whose progress stopped and the round is SHOW_RESULT.
+                        // However, we don't have explicit "winner" tracking in state before removing life. Let's just trust isLoser class later if needed.
+                        const myProg = roomData.arena.simonsays?.progress[cId];
+                        const otherProg = roomData.arena.simonsays?.progress[roomData.arena.challengerIds[index === 0 ? 1 : 0]];
+                        if (myProg < otherProg) isLoser = true;
+                        else if (myProg > otherProg) isWinner = true;
+                    }
+                }
+
+                return (
+                    <div key={cId + index} className={`flex flex-col items-center gap-2 md:gap-4 transition-all duration-300 ${isLoser ? 'opacity-50 scale-90 blur-[2px]' : isWinner ? 'scale-110 drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]' : ''} ${isChoosing ? 'scale-105 opacity-80' : ''}`}>
+                        <div className="bg-slate-800/90 px-4 md:px-6 py-1.5 md:py-2 rounded-full border border-slate-600 flex flex-col items-center min-h-[50px] md:min-h-[64px] min-w-[100px] md:min-w-[120px]">
+                            <span className={`font-bold text-sm md:text-lg ${isMe ? 'text-yellow-400' : 'text-white'} flex flex-col md:flex-row items-center md:gap-2`}>
+                                {p.name}
+                                {roomData.config.isCompetitive && <RankBadge rr={p.rr} />}
+                            </span>
+                            <div className="mt-1"><BigHearts count={p.lives} max={maxGameLives} /></div>
+                        </div>
+                        
+                        <div className={`relative w-28 h-28 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-2xl md:rounded-3xl flex items-center justify-center border-4 ${char ? char.color : 'border-slate-500'} border-white/20 shadow-2xl overflow-hidden p-1.5 md:p-2`}>
+                            {char && <img src={char.img} className={`w-full h-full object-cover rounded-xl md:rounded-2xl z-10 transition-transform ${isWinner ? 'animate-bounce' : ''}`} />}
+                            {isLoser && <div className="absolute inset-0 bg-red-600/60 z-20 flex items-center justify-center animate-in zoom-in"><span className="text-2xl md:text-4xl font-black text-white rotate-[-15deg] drop-shadow-lg">-1 VITA</span></div>}
+                        </div>
+
+                        <div className="h-16 md:h-20 flex items-center justify-center w-full">
+                            {/* ESTREZIONE IN CORSO */}
+                            {isChoosing && <div className="animate-pulse text-slate-400 font-bold uppercase tracking-widest text-sm bg-slate-800 px-4 py-2 rounded-xl">Estrazione...</div>}
+
+                            {/* UI DADI */}
+                            {roomData.arena.minigame === 'DICE' && !isChoosing && (() => {
+                                const rollData = roomData.arena.rolls[cId];
+                                const isRolling = rollData === 'ROLLING';
+                                const hasFinishedRoll = typeof rollData === 'object' && rollData.result !== undefined;
+
+                                return (
+                                    <>
+                                        {(!rollData || rollData === 'PRE_ROLL') && isMe && roomData.arena.matchState === 'WAITING_ACTION' && (
+                                            <button 
+                                                onClick={() => rollMyDice(cId)}
+                                                className="bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 font-black text-sm md:text-xl px-6 md:px-8 py-2 md:py-3 rounded-xl shadow-lg flex items-center gap-2 transform hover:scale-105 animate-bounce"
+                                            ><Dices className="w-5 h-5 md:w-6 md:h-6" /> TIRA!</button>
+                                        )}
+                                        {(!rollData || rollData === 'PRE_ROLL') && !isMe && roomData.arena.matchState === 'WAITING_ACTION' && (
+                                            <div className="border-4 border-dashed border-slate-600 rounded-2xl px-6 py-2 flex flex-col items-center justify-center animate-pulse text-slate-500 font-bold text-[10px] uppercase">
+                                                <Dices className="w-5 h-5 md:w-6 md:h-6 mb-1"/> ATTESA
+                                            </div>
+                                        )}
+                                        {isRolling && <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-2xl flex items-center justify-center shadow-xl text-slate-900 text-4xl md:text-5xl font-black animate-[spin_0.2s_linear_infinite]">?</div>}
+                                        {hasFinishedRoll && <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-2xl flex items-center justify-center shadow-xl text-slate-900 text-4xl md:text-5xl font-black animate-in zoom-in-50">{rollData.result}</div>}
+                                    </>
+                                );
+                            })()}
+
+                            {/* UI CAMPO MINATO */}
+                            {roomData.arena.minigame === 'MINESWEEPER' && !isChoosing && (
+                                <div className="flex flex-col items-center gap-1">
+                                    <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Bombe Trovate</span>
+                                    <div className="flex gap-2 bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 shadow-inner">
+                                        <Bomb className={`w-5 h-5 md:w-6 md:h-6 ${roomData.arena.minesweeper.bombsFound[cId] >= 1 ? 'text-red-500 animate-bounce' : 'text-slate-600'}`} />
+                                        <Bomb className={`w-5 h-5 md:w-6 md:h-6 ${roomData.arena.minesweeper.bombsFound[cId] >= 2 ? 'text-red-500 animate-bounce' : 'text-slate-600'}`} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* UI SIMON SAYS */}
+                            {roomData.arena.minigame === 'SIMONSAYS' && !isChoosing && (
+                                <div className="flex flex-col items-center gap-1 w-full px-4">
+                                    <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Memoria ({roomData.arena.simonsays?.sequence?.length || 0})</span>
+                                    <div className="flex gap-1">
+                                        {Array.from({ length: roomData.arena.simonsays?.sequence?.length || 0 }).map((_, i) => (
+                                            <div key={i} className={`w-2 h-2 md:w-3 md:h-3 rounded-full ${i < (roomData.arena.simonsays?.progress[cId] || 0) ? 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.8)]' : 'bg-slate-700'}`} />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="relative z-10 h-full w-full flex flex-col bg-slate-900">
+                    <div className="fixed inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+                    <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_#0f172a_100%)] pointer-events-none"></div>
+
+                    {/* TOP BAR */}
+                    <div className="absolute top-0 left-0 right-0 p-2 md:p-3 flex items-center justify-between z-30 bg-slate-900/95 border-b border-slate-700/50 shadow-lg">
+                        <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-600 shrink-0">
+                            <span className="text-slate-400 text-[10px] md:text-xs uppercase font-bold flex items-center gap-1">
+                                {roomData.config.isCompetitive ? <><Swords className="w-3 h-3 text-rose-400"/> <span className="text-rose-400">Comp.</span></> : <span>Amich.</span>}
+                            </span>
+                            <span className="text-white font-mono font-bold tracking-widest text-sm border-l border-slate-600 pl-2 ml-1">{roomId}</span>
+                        </div>
+                        
+                        <div className="flex-1 flex gap-2 md:gap-4 overflow-x-auto custom-scrollbar px-4 justify-center">
+                            {alivePlayers.map(p => {
+                                const isFighting = roomData.state === 'ARENA' && roomData.arena.challengerIds.includes(p.id);
+                                const cInfo = CHARACTERS.find(c => c.id === p.characterId);
+                                
+                                return (
+                                    <div key={p.id} className={`flex flex-col items-center shrink-0 transition-all ${isFighting ? 'scale-110 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] z-10' : 'scale-95'}`}>
+                                        <div className={`bg-slate-800 border-2 ${isFighting ? 'border-yellow-400' : 'border-slate-600'} rounded-xl p-1.5 flex flex-col items-center w-20 md:w-24 shadow-lg transition-colors`}>
+                                            {cInfo ? <img src={cInfo.img} className="w-10 h-10 md:w-12 md:h-12 object-cover rounded-lg mb-1 shadow-md" /> : <User className="w-8 h-8 text-slate-500 mb-1" />}
+                                            <span className="text-[9px] md:text-[10px] font-bold text-white truncate w-full text-center uppercase tracking-wider mb-0.5">{p.name}</span>
+                                            {roomData.config.isCompetitive && <div className="mb-1"><RankBadge rr={p.rr} /></div>}
+                                            <Hearts count={p.lives} max={maxGameLives} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <button onClick={leaveRoom} className="text-red-400 hover:text-red-300 text-xs font-bold bg-slate-800 px-3 py-2 rounded-lg border border-red-900/50 shrink-0">Esci</button>
+                    </div>
+
+                    <div className="flex-1 flex flex-row pt-[90px] md:pt-[100px] pb-4 px-2 md:px-4 w-full relative z-10 h-full overflow-hidden">
+                        
+                        {/* PANNELLI ELIMINATI CON RR IN TEMPO REALE */}
+                        {deadPlayers.length > 0 && roomData.state === 'ARENA' && (
+                            <>
+                                <div className="hidden md:flex flex-col w-32 md:w-40 shrink-0 bg-slate-900/90 border border-slate-700 rounded-2xl p-2 gap-2 h-full overflow-y-auto custom-scrollbar shadow-2xl backdrop-blur-md z-20">
+                                    <h3 className="text-red-500 font-black uppercase text-[10px] md:text-xs text-center border-b border-slate-700 pb-2 mb-1 flex items-center justify-center gap-1"><HeartCrack className="w-3 h-3 md:w-4 md:h-4"/> Eliminati</h3>
+                                    {deadPlayers.map(p => {
+                                        const cInfo = CHARACTERS.find(c => c.id === p.characterId);
+                                        return (
+                                            <div key={p.id} className="flex flex-col items-center bg-slate-800/80 border border-slate-700 rounded-xl p-1.5 opacity-70 grayscale hover:grayscale-0 transition-all relative mt-2">
+                                                {cInfo ? <img src={cInfo.img} className="w-8 h-8 md:w-10 md:h-10 object-cover rounded-lg mb-1" /> : <User className="w-8 h-8 text-slate-500 mb-1" />}
+                                                <span className="text-[9px] md:text-[10px] font-bold text-slate-300 truncate w-full text-center line-through">{p.name}</span>
+                                                <span className="text-[8px] text-red-400 font-bold mt-0.5 mb-1">Round {p.eliminatedInRound || '?'}</span>
+                                                {roomData.config.isCompetitive && <div className="mb-1"><RankBadge rr={p.rr} /></div>}
+                                                
+                                                {roomData.config.isCompetitive && p.rrChange !== undefined && (
+                                                    <div className={`absolute -top-3 -right-2 px-1.5 py-0.5 rounded-full text-[10px] md:text-[11px] font-black shadow-md ${p.rrChange > 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                                                        {p.rrChange > 0 ? `+${p.rrChange}` : p.rrChange}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="md:hidden absolute left-2 top-[90px] bottom-4 w-24 bg-slate-900/90 border border-slate-700 rounded-2xl p-2 flex flex-col gap-2 overflow-y-auto custom-scrollbar shadow-2xl backdrop-blur-md z-20">
+                                    <h3 className="text-red-500 font-black uppercase text-[9px] text-center border-b border-slate-700 pb-1.5 mb-1 flex items-center justify-center gap-1"><HeartCrack className="w-3 h-3"/> Eliminati</h3>
+                                    {deadPlayers.map(p => {
+                                        const cInfo = CHARACTERS.find(c => c.id === p.characterId);
+                                        return (
+                                            <div key={p.id} className="flex flex-col items-center bg-slate-800/80 border border-slate-700 rounded-xl p-1.5 opacity-70 grayscale relative mt-2">
+                                                {cInfo && <img src={cInfo.img} className="w-8 h-8 object-cover rounded-lg mb-1" />}
+                                                <span className="text-[8px] font-bold text-slate-300 truncate w-full text-center line-through">{p.name}</span>
+                                                <span className="text-[7px] text-red-400 font-bold mt-0.5 mb-1">Round {p.eliminatedInRound || '?'}</span>
+                                                
+                                                {roomData.config.isCompetitive && p.rrChange !== undefined && (
+                                                    <div className={`absolute -top-2 -right-2 px-1.5 py-0.5 rounded-full text-[9px] font-black shadow-md ${p.rrChange > 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                                                        {p.rrChange > 0 ? `+${p.rrChange}` : p.rrChange}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+
+                        <div className="flex-1 h-full flex flex-col relative overflow-y-auto custom-scrollbar w-full">
+                            
+                            {/* SCHERMATA CHAR_SELECT */}
+                            {roomData.state === 'CHAR_SELECT' && (
+                                <div className="flex flex-col h-full w-full max-w-7xl mx-auto animate-in fade-in">
+                                    <div className="text-center mb-4 bg-slate-800/80 py-3 rounded-2xl border border-slate-700/50 backdrop-blur-sm shrink-0">
+                                        <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-wider">
+                                            {me?.isReady ? "In attesa degli altri..." : "Seleziona il Personaggio"}
+                                        </h1>
+                                    </div>
+
+                                    <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
+                                        {/* Lista Giocatori */}
+                                        <div className="w-full md:w-64 bg-slate-800/80 rounded-3xl border border-slate-600 p-4 flex flex-col gap-2 overflow-y-auto shrink-0 custom-scrollbar">
+                                            <h3 className="text-slate-400 font-bold uppercase text-xs mb-2">Giocatori ({playersList.length}/{roomData.config.maxPlayers})</h3>
+                                            {playersList.map(p => {
+                                                const char = CHARACTERS.find(c => c.id === p.characterId);
+                                                return (
+                                                    <div key={p.id} className={`shrink-0 flex items-center gap-3 p-2.5 rounded-xl transition-all ${p.isReady ? 'bg-emerald-900/40 border border-emerald-500/30' : 'bg-slate-700/50 border border-slate-600'}`}>
+                                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center p-0.5 ${char ? char.color : 'bg-slate-800'} ${char ? char.shadow : ''} shadow-lg shrink-0`}>
+                                                            {char ? <img src={char.img} className="w-full h-full object-cover rounded-md" /> : <User className="w-5 h-5 text-slate-500" />}
+                                                        </div>
+                                                        <div className="flex-1 overflow-hidden">
+                                                            <p className={`font-bold truncate text-sm ${p.id === user.uid ? 'text-yellow-400' : 'text-white'} flex items-center gap-2`}>
+                                                                {p.name}
+                                                            </p>
+                                                            <p className="text-[10px] uppercase text-slate-400 flex items-center gap-1 mt-1">
+                                                                {p.isReady ? <><Check className="w-3 h-3 text-emerald-400"/> Pronto</> : p.isBot ? '...' : 'Scegliendo...'}
+                                                                {roomData.config.isCompetitive && <RankBadge rr={p.rr} />}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Griglia Selezione */}
+                                        <div className="flex-1 flex flex-col min-h-0 bg-slate-800/40 rounded-3xl border border-slate-600 p-4 overflow-hidden relative">
+                                            {me?.isReady && !allHumansReady && <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm z-20 flex items-center justify-center rounded-3xl"><span className="bg-slate-800 border-2 border-emerald-500 text-emerald-400 font-bold px-6 py-3 rounded-full animate-pulse shadow-xl">Pronto! In attesa degli altri...</span></div>}
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 overflow-y-auto custom-scrollbar pr-2 pb-4">
+                                                {CHARACTERS.map(char => {
+                                                    const isTaken = playersList.some(p => p.characterId === char.id && p.id !== user.uid);
+                                                    const isMine = me?.characterId === char.id;
+                                                    return (
+                                                        <div
+                                                            key={char.id}
+                                                            onClick={() => { if(!me?.isReady && !isTaken) updateRoom({ [`players.${user.uid}.characterId`]: char.id }) }}
+                                                            role="button"
+                                                            className={`relative w-full rounded-2xl border-4 overflow-hidden transition-transform cursor-pointer ${isMine ? 'border-white scale-105 z-10' : 'border-transparent'} ${isTaken ? 'opacity-30 grayscale cursor-not-allowed' : 'hover:scale-105'} ${char.color}`}
+                                                            style={{ paddingBottom: '100%' }}
+                                                        >
+                                                            <div className="absolute inset-0">
+                                                                <img src={char.img} className="w-full h-full object-cover" />
+                                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2 pt-8 flex items-end">
+                                                                    <span className="block w-full font-black text-white uppercase text-[9px] sm:text-[10px] truncate text-center drop-shadow-md leading-none">{char.name}</span>
+                                                                </div>
+                                                                {isTaken && <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[1px]"><span className="text-white font-bold bg-red-600 px-2 py-0.5 rounded text-[10px] rotate-[-15deg]">PRESO</span></div>}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end shrink-0 gap-4">
+                                                {!me?.isReady ? (
+                                                    <button
+                                                        onClick={() => updateRoom({ [`players.${user.uid}.isReady`]: true })}
+                                                        disabled={!me?.characterId}
+                                                        className={`flex items-center gap-2 px-8 py-3 rounded-2xl font-black text-lg uppercase transition-all ${!me?.characterId ? 'bg-slate-700 text-slate-500' : 'bg-emerald-500 text-white hover:bg-emerald-400 hover:scale-105 shadow-lg'}`}
+                                                    >Conferma <ArrowRight className="w-5 h-5" /></button>
+                                                ) : (
+                                                    isHost && allHumansReady ? (
+                                                        <button
+                                                            onClick={startGameWithBotsAndArena}
+                                                            className="flex items-center gap-2 px-8 py-3 rounded-2xl font-black text-lg uppercase transition-all bg-yellow-500 text-slate-900 hover:bg-yellow-400 hover:scale-105 shadow-[0_0_20px_rgba(234,179,8,0.5)] animate-pulse"
+                                                        >Avvia Partita! <Play className="w-5 h-5" /></button>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm md:text-lg uppercase bg-slate-700 text-slate-300">
+                                                            In attesa {isHost ? "dei giocatori" : "dell'Host"}...
+                                                        </div>
+                                                    )
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SCHERMATA ARENA */}
+                            {roomData.state === 'ARENA' && (() => {
+                                const isChoosing = roomData.arena.matchState === 'CHOOSING_CHALLENGERS';
+                                const displayIds = isChoosing && rouletteIds.length === 2 
+                                    ? rouletteIds 
+                                    : roomData.arena.challengerIds;
+
+                                const minigameName = roomData.arena.minigame === 'MINESWEEPER' ? 'CAMPO MINATO' : (roomData.arena.minigame === 'SIMONSAYS' ? 'SIMON SAYS' : 'DADI');
+
+                                return (
+                                    <div className={`flex flex-col items-center justify-center h-full w-full max-w-5xl mx-auto animate-in zoom-in-95 ${deadPlayers.length > 0 ? 'pl-28 md:pl-0' : ''}`}>
+                                        
+                                        {/* INTESTAZIONE MINIGIOCO */}
+                                        {!isChoosing && (
+                                            <div className="mb-6 bg-slate-800/80 px-8 py-2 rounded-full border border-slate-600 shadow-xl hidden md:flex items-center gap-2">
+                                                {roomData.arena.minigame === 'SIMONSAYS' ? <BrainCircuit className="text-pink-400 w-6 h-6" /> : <Gamepad2 className="text-yellow-400 w-6 h-6" />}
+                                                <span className="text-xl font-black text-white tracking-widest uppercase">SFIDA: {minigameName}</span>
+                                            </div>
+                                        )}
+
+                                        <div className={`flex flex-col md:flex-row items-center justify-center w-full ${roomData.arena.minigame !== 'DICE' && !isChoosing ? 'gap-6 md:gap-12' : 'gap-8 md:gap-24'}`}>
+                                            
+                                            {/* GIOCATORE SINISTRA */}
+                                            {displayIds.length === 2 && renderFighter(displayIds[0], 0, isChoosing)}
+                                            
+                                            {/* AREA CENTRALE (VS O MINIGIOCO) */}
+                                            {displayIds.length === 2 && (
+                                                <div className="flex flex-col items-center justify-center z-30 min-w-[150px] md:min-w-[200px]">
+                                                    {isChoosing ? (
+                                                        <div className="flex flex-col items-center pointer-events-none">
+                                                            <Swords className="w-16 h-16 md:w-20 md:h-20 text-yellow-400 animate-[spin_0.5s_linear_infinite] drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]" />
+                                                            <span className="text-sm md:text-xl font-black text-white bg-slate-900/90 px-4 py-1 rounded-full backdrop-blur mt-2 border border-slate-700 animate-pulse">SCELTA...</span>
+                                                        </div>
+                                                    ) : roomData.arena.minigame === 'MINESWEEPER' ? (
+                                                        <div className="flex flex-col items-center">
+                                                            <div className={`mb-3 px-4 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-sm uppercase tracking-widest shadow-lg border-2 ${roomData.arena.minesweeper?.turn === displayIds[0] ? 'bg-indigo-900 border-indigo-400 text-indigo-200' : 'bg-rose-900 border-rose-400 text-rose-200'}`}>
+                                                                Turno di: {roomData.players[roomData.arena.minesweeper?.turn]?.name || '?'}
+                                                            </div>
+                                                            <div className="grid grid-cols-5 gap-1.5 md:gap-2 bg-slate-800 p-2.5 md:p-3 rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.5)] border border-slate-700">
+                                                                {roomData.arena.minesweeper?.board.map((cell, idx) => {
+                                                                    const isRevealed = cell.revealedBy !== null;
+                                                                    const isBomb = cell.hasBomb;
+                                                                    const showBomb = isRevealed && isBomb;
+                                                                    const showSafe = isRevealed && !isBomb;
+                                                                    
+                                                                    let cellColor = 'bg-slate-700 cursor-pointer shadow-sm';
+                                                                    if (isRevealed) {
+                                                                        cellColor = isBomb ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : 'bg-slate-900 shadow-inner';
+                                                                    }
+
+                                                                    return (
+                                                                        <div
+                                                                            key={idx}
+                                                                            onClick={() => clickMinesweeperTile(idx)}
+                                                                            className={`w-10 h-10 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-all ${cellColor} ${!isRevealed && roomData.arena.minesweeper.turn === user.uid ? 'hover:bg-slate-600 hover:scale-105' : ''}`}
+                                                                        >
+                                                                            {showBomb && <Bomb className="w-6 h-6 md:w-8 md:h-8 text-white animate-bounce" />}
+                                                                            {showSafe && <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-emerald-500 opacity-50" />}
+                                                                        </div>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    ) : roomData.arena.minigame === 'SIMONSAYS' ? (
+                                                        <div className="flex flex-col items-center">
+                                                            <div className={`mb-4 px-4 md:px-6 py-1 md:py-2 rounded-full font-bold text-[10px] md:text-sm uppercase tracking-widest shadow-lg border-2 ${roomData.arena.simonsays?.phase === 'WATCH' ? 'bg-indigo-900 border-indigo-400 text-indigo-200 animate-pulse' : 'bg-emerald-900 border-emerald-400 text-emerald-200 animate-bounce'}`}>
+                                                                {roomData.arena.simonsays?.phase === 'WATCH' ? 'OSSERVA...' : 'RIPETI!'}
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-1.5 md:gap-2 bg-slate-800 p-2 md:p-3 rounded-full shadow-[0_0_30px_rgba(0,0,0,0.5)] border-4 border-slate-700 w-32 h-32 md:w-48 md:h-48">
+                                                                {SIMON_COLORS.map((col, idx) => (
+                                                                    <div
+                                                                        key={idx}
+                                                                        onClick={() => clickSimonColor(idx)}
+                                                                        className={`w-full h-full ${col.shape} transition-all duration-200 border-4 border-slate-900 cursor-pointer
+                                                                        ${simonLit === idx ? `${col.bg} ${col.glow} brightness-150` : `${col.bg} opacity-50 hover:opacity-75`}
+                                                                        `}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center pointer-events-none hidden md:flex">
+                                                            <Swords className="w-16 h-16 md:w-20 md:h-20 text-yellow-400 animate-[pulse_2s_ease-in-out_infinite] drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]" />
+                                                            <span className="text-xl md:text-3xl font-black text-white bg-slate-900/80 px-4 py-1 rounded-full backdrop-blur mt-2 border border-slate-700">VS</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* GIOCATORE DESTRA */}
+                                            {displayIds.length === 2 && renderFighter(displayIds[1], 1, isChoosing)}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* SCHERMATA GAME OVER */}
+                            {roomData.state === 'GAME_OVER' && (
+                                <div className="flex flex-col items-center justify-center h-full animate-in zoom-in duration-500">
+                                    <Trophy className="w-32 h-32 text-yellow-400 mb-6 animate-bounce drop-shadow-[0_0_40px_rgba(250,204,21,0.6)]" />
+                                    <h1 className="text-4xl md:text-5xl font-black text-white mb-4 uppercase tracking-widest text-center">
+                                        {roomData.winnerId ? 'Abbiamo un Vincitore!' : 'Pareggio Globale?!'}
+                                    </h1>
+
+                                    {roomData.config.isCompetitive && myRRChange !== null && (
+                                        <div className={`mb-8 px-8 py-3 rounded-full font-black text-2xl md:text-3xl animate-bounce shadow-xl flex items-center gap-3 ${myRRChange > 0 ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500' : 'bg-red-500/20 text-red-400 border-2 border-red-500'}`}>
+                                            <Medal className="w-8 h-8" />
+                                            {myRRChange > 0 ? `+${myRRChange} RR` : `${myRRChange} RR`}
+                                        </div>
+                                    )}
+                                    
+                                    {roomData.winnerId && roomData.players[roomData.winnerId] && (() => {
+                                        const winner = roomData.players[roomData.winnerId];
+                                        const char = CHARACTERS.find(c => c.id === winner.characterId);
+                                        return (
+                                            <div className="flex flex-col items-center bg-slate-800/80 p-8 rounded-3xl border border-slate-600 shadow-2xl relative mt-4">
+                                                
+                                                {roomData.config.isCompetitive && (
+                                                    <div className="absolute -top-4 right-4 animate-bounce"><RankBadge rr={winner.rr} /></div>
+                                                )}
+
+                                                <div className={`w-40 h-40 rounded-3xl ${char.color} flex items-center justify-center p-2 border-4 border-white/50 mb-4 shadow-[0_0_40px_rgba(255,255,255,0.2)]`}>
+                                                    <img src={char.img} className="w-full h-full object-cover rounded-2xl" />
+                                                </div>
+                                                <p className={`text-4xl font-black ${winner.id === user.uid ? 'text-yellow-400' : 'text-white'}`}>
+                                                    {winner.name} {winner.id === user.uid ? '(TU!)' : ''}
+                                                </p>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {isHost && (
+                                        <button 
+                                            onClick={leaveRoom}
+                                            className="mt-10 bg-white hover:bg-slate-200 text-slate-900 font-bold text-xl px-10 py-4 rounded-xl shadow-lg transition-transform hover:scale-105"
+                                        >Chiudi Stanza</button>
+                                    )}
+                                    {!isHost && (
+                                        <p className="mt-8 text-slate-400">In attesa che l'Host chiuda la stanza...</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
