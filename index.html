@@ -367,14 +367,14 @@
             const handledRoundRef = useRef(-1); 
             const botMoveCountRef = useRef(new Set()); // SET PER IA BOT!
 
-            // --- SISTEMA AUTONOMO DI SIMULAZIONE BOT (OGNI 3 ORE) ---
+            // --- SISTEMA AUTONOMO DI SIMULAZIONE BOT (OGNI 1 ORA, CUMULATIVO) ---
             useEffect(() => {
                 const checkAndRunSimulation = async () => {
                     const simRef = doc(db, "system", "botSimulation");
                     try {
                         const simSnap = await getDoc(simRef);
                         const now = Date.now();
-                        const THREE_HOURS = 3 * 60 * 60 * 1000;
+                        const ONE_HOUR = 60 * 60 * 1000;
 
                         if (!simSnap.exists()) {
                             await setDoc(simRef, { lastRun: now });
@@ -382,10 +382,15 @@
                         }
 
                         const lastRun = simSnap.data().lastRun;
-                        if (now - lastRun > THREE_HOURS) {
-                            // Aggiorniamo subito il timestamp così altri giocatori online non fanno la simulazione in parallelo
-                            await updateDoc(simRef, { lastRun: now });
-                            console.log("Esecuzione simulazione bot in background...");
+                        const hoursPassed = Math.floor((now - lastRun) / ONE_HOUR);
+
+                        if (hoursPassed >= 1) {
+                            // Limite massimo di 72 ore (3 giorni) per non sovraccaricare Firebase se il gioco resta chiuso a lungo
+                            const simulationsToRun = Math.min(hoursPassed, 72);
+                            
+                            // Aggiorniamo subito il timestamp per evitare che altri client avviino la stessa coda
+                            await updateDoc(simRef, { lastRun: lastRun + (simulationsToRun * ONE_HOUR) });
+                            console.log(`Esecuzione di ${simulationsToRun} simulazioni bot in background...`);
 
                             // 1. Recupera o crea i bot
                             const botsSnap = await getDocs(collection(db, "competitive_bots"));
@@ -393,35 +398,39 @@
                             botsSnap.forEach(d => allBots.push({ id: d.id, ...d.data() }));
 
                             if (allBots.length === 0) {
-                                const batch = writeBatch(db);
                                 COMPETITIVE_BOT_NAMES.forEach(name => {
-                                    batch.set(doc(db, "competitive_bots", name), { rr: 200 });
-                                    allBots.push({ id: name, rr: 200 });
+                                    allBots.push({ id: name, rr: 60 });
                                 });
-                                await batch.commit();
                             }
 
-                            // 2. Seleziona 8 bot a caso
-                            const shuffled = allBots.sort(() => 0.5 - Math.random());
-                            const selectedBots = shuffled.slice(0, 8);
-                            
-                            // 3. Simula la partita
-                            if (selectedBots.length === 8) {
-                                const batch = writeBatch(db);
-                                // Dato che sono già mescolati, il loro indice + 1 equivale a un piazzamento casuale perfetto!
-                                selectedBots.forEach((bot, index) => {
-                                    const placement = index + 1;
-                                    // Se arriva 1°, randomizziamo con quanti cuori ha vinto per l'assegnazione (max 3 per bot)
-                                    const simulatedLives = placement === 1 ? Math.floor(Math.random() * 3) + 1 : 0;
-                                    
-                                    const rrChange = calculateRRChange(placement, simulatedLives, true);
-                                    const newRR = Math.max(0, (bot.rr || 200) + rrChange);
-                                    
-                                    batch.set(doc(db, "competitive_bots", bot.id), { rr: newRR }, { merge: true });
-                                });
-                                await batch.commit();
-                                console.log("Simulazione completata con successo! Rank dei bot aggiornati.");
+                            // 2. Eseguiamo il ciclo per N volte in memoria (molto più veloce e sicuro per Firebase)
+                            for (let i = 0; i < simulationsToRun; i++) {
+                                const shuffled = [...allBots].sort(() => 0.5 - Math.random());
+                                const selectedBots = shuffled.slice(0, 8);
+                                
+                                if (selectedBots.length === 8) {
+                                    selectedBots.forEach((bot, index) => {
+                                        const placement = index + 1;
+                                        const simulatedLives = placement === 1 ? Math.floor(Math.random() * 3) + 1 : 0;
+                                        const rrChange = calculateRRChange(placement, simulatedLives, true);
+                                        
+                                        // Aggiorniamo i punti temporaneamente in memoria per la prossima iterazione
+                                        const botIndex = allBots.findIndex(b => b.id === bot.id);
+                                        if (botIndex !== -1) {
+                                            allBots[botIndex].rr = Math.max(0, (allBots[botIndex].rr || 60) + rrChange);
+                                        }
+                                    });
+                                }
                             }
+
+                            // 3. Salvataggio finale: un solo batch "commit" per tutte le simulazioni cumulate
+                            const batch = writeBatch(db);
+                            allBots.forEach(bot => {
+                                batch.set(doc(db, "competitive_bots", bot.id), { rr: bot.rr }, { merge: true });
+                            });
+                            await batch.commit();
+                            
+                            console.log("Simulazioni cumulative completate! Rank dei bot aggiornati.");
                         }
                     } catch (err) {
                         console.log("Simulazione bot in background skippata (Errore o permessi)", err);
