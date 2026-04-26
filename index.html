@@ -70,6 +70,37 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // --- AUDIO HELPERS ---
+        let audioCtx = null;
+        function playTone(frequency, duration = 400) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = 'sine';
+                oscillator.frequency.value = frequency;
+
+                // Envelopes per evitare click audio netti all'inizio e alla fine
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration / 1000);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + duration / 1000 + 0.1);
+            } catch(e) {
+                console.log("Audioplay non ancora permesso dal browser");
+            }
+        }
+
         // --- CONFIGURAZIONI GLOBALI ---
         const BOT_NAMES = ['Bot_Alfa', 'Bot_Beta', 'Bot_Gamma', 'Bot_Delta', 'Bot_Epsilon', 'Bot_Zeta', 'Bot_Sigma', 'Bot_Omega'];
         const COMPETITIVE_BOT_NAMES = ['Kyle', 'Marta', 'Gennaro', 'Luca', 'Rosa Maria', 'Delia', 'Marissa', 'Dan', 'Gale', 'Mario', 'Paolo', 'James', 'Terra', 'Pant', 'Piedone', 'Mt.'];
@@ -250,10 +281,10 @@
 
         // --- SIMON SAYS CONFIG ---
         const SIMON_COLORS = [
-            { bg: 'bg-green-500', glow: 'shadow-[0_0_30px_rgba(34,197,94,1)]', shape: 'rounded-tl-[3rem] md:rounded-tl-[4rem]' }, // Top-Left
-            { bg: 'bg-red-500', glow: 'shadow-[0_0_30px_rgba(239,68,68,1)]', shape: 'rounded-tr-[3rem] md:rounded-tr-[4rem]' }, // Top-Right
-            { bg: 'bg-yellow-400', glow: 'shadow-[0_0_30px_rgba(250,204,21,1)]', shape: 'rounded-bl-[3rem] md:rounded-bl-[4rem]' }, // Bottom-Left
-            { bg: 'bg-blue-500', glow: 'shadow-[0_0_30px_rgba(59,130,246,1)]', shape: 'rounded-br-[3rem] md:rounded-br-[4rem]' }  // Bottom-Right
+            { bg: 'bg-green-500', glow: 'shadow-[0_0_30px_rgba(34,197,94,1)]', shape: 'rounded-tl-[3rem] md:rounded-tl-[4rem]', freq: 329.63 }, // Mi
+            { bg: 'bg-red-500', glow: 'shadow-[0_0_30px_rgba(239,68,68,1)]', shape: 'rounded-tr-[3rem] md:rounded-tr-[4rem]', freq: 261.63 }, // Do
+            { bg: 'bg-yellow-400', glow: 'shadow-[0_0_30px_rgba(250,204,21,1)]', shape: 'rounded-bl-[3rem] md:rounded-bl-[4rem]', freq: 392.00 }, // Sol
+            { bg: 'bg-blue-500', glow: 'shadow-[0_0_30px_rgba(59,130,246,1)]', shape: 'rounded-br-[3rem] md:rounded-br-[4rem]', freq: 220.00 }  // La basso
         ];
 
         const CHARACTERS = RAW_CHARACTERS.map((char, index) => {
@@ -288,7 +319,14 @@
             const processedGamesRef = useRef(new Set());
             const arenaStartTimeRef = useRef(null);
             const handledRoundRef = useRef(-1); 
-            const botMoveCountRef = useRef(''); // Cambiato a stringa per gestire id complessi (es. per Simon)
+            const botMoveCountRef = useRef(new Set()); // SET PER IA BOT!
+
+            // Effetto Sonoro Simon Says
+            useEffect(() => {
+                if (simonLit !== null) {
+                    playTone(SIMON_COLORS[simonLit].freq, 350); // Leggermente meno di 400ms per non accavallarsi
+                }
+            }, [simonLit]);
 
             // 1. Auth Init & Stats Listener
             useEffect(() => {
@@ -528,7 +566,7 @@
                     // Genera sequenza iniziale di 3
                     simonsaysData = {
                         sequence: [Math.floor(Math.random() * 4), Math.floor(Math.random() * 4), Math.floor(Math.random() * 4)],
-                        phase: 'WATCH', // WATCH, PLAY
+                        phase: 'WATCH', 
                         progress: { [c1]: 0, [c2]: 0 }
                     };
                 }
@@ -608,7 +646,7 @@
                 startNewRound(simulatedData);
             };
 
-            // --- DECRETO SCONFITTA GLOBALE ---
+            // --- DECRETO SCONFITTA GLOBALE E RR ---
             const handleLoser = async (loserId, roundNum) => {
                 if (handledRoundRef.current === roundNum) return;
                 handledRoundRef.current = roundNum;
@@ -698,13 +736,18 @@
                 cIds.forEach(cId => {
                     const p = roomData.players[cId];
                     if (p && p.isBot && roomData.arena.rolls[cId] === undefined) {
-                        updateRoom({ [`arena.rolls.${cId}`]: 'PRE_ROLL' }); 
-                        setTimeout(() => {
-                            updateRoom({ [`arena.rolls.${cId}`]: 'ROLLING' });
+                        const refKey = `dice_${roomData.arena.round}_${cId}`;
+                        if (!botMoveCountRef.current.has(refKey)) {
+                            botMoveCountRef.current.add(refKey);
+
+                            updateRoom({ [`arena.rolls.${cId}`]: 'PRE_ROLL' }); 
                             setTimeout(() => {
-                                updateRoom({ [`arena.rolls.${cId}`]: { result: Math.floor(Math.random() * 6) + 1 } });
-                            }, 1000);
-                        }, 500 + Math.random() * 1500);
+                                updateRoom({ [`arena.rolls.${cId}`]: 'ROLLING' });
+                                setTimeout(() => {
+                                    updateRoom({ [`arena.rolls.${cId}`]: { result: Math.floor(Math.random() * 6) + 1 } });
+                                }, 1000);
+                            }, 500 + Math.random() * 1500);
+                        }
                     }
                 });
             }, [roomData]);
@@ -744,6 +787,7 @@
                 
                 if (ms.turn !== user.uid) return;
                 if (ms.board[idx].revealedBy !== null) return;
+                if (handledRoundRef.current === roomData.arena.round) return;
 
                 const isBomb = ms.board[idx].hasBomb;
                 const board = [...ms.board];
@@ -772,34 +816,40 @@
                 const turnId = ms.turn;
                 const p = roomData.players[turnId];
 
-                if (p && p.isBot && botMoveCountRef.current !== `ms_${ms.moveCount}` && ms.bombsFound[turnId] < 2) {
-                    botMoveCountRef.current = `ms_${ms.moveCount}`;
+                if (p && p.isBot && ms.bombsFound[turnId] < 2) {
+                    const msKey = `ms_${roomData.arena.round}_${ms.moveCount}`;
 
-                    setTimeout(() => {
-                        const board = [...ms.board];
-                        const unrevealed = board.map((c, i) => c.revealedBy === null ? i : -1).filter(i => i !== -1);
-                        
-                        if (unrevealed.length > 0) {
-                            const choice = unrevealed[Math.floor(Math.random() * unrevealed.length)];
-                            const isBomb = board[choice].hasBomb;
-                            board[choice] = { hasBomb: isBomb, revealedBy: turnId };
+                    if (!botMoveCountRef.current.has(msKey)) {
+                        botMoveCountRef.current.add(msKey);
 
-                            const newBombsFound = { ...ms.bombsFound };
-                            if (isBomb) newBombsFound[turnId]++;
+                        setTimeout(() => {
+                            if (handledRoundRef.current === roomData.arena.round) return;
 
-                            let nextTurn = turnId;
-                            if (newBombsFound[turnId] < 2) {
-                                nextTurn = turnId === roomData.arena.challengerIds[0] ? roomData.arena.challengerIds[1] : roomData.arena.challengerIds[0];
+                            const board = [...ms.board];
+                            const unrevealed = board.map((c, i) => c.revealedBy === null ? i : -1).filter(i => i !== -1);
+                            
+                            if (unrevealed.length > 0) {
+                                const choice = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+                                const isBomb = board[choice].hasBomb;
+                                board[choice] = { hasBomb: isBomb, revealedBy: turnId };
+
+                                const newBombsFound = { ...ms.bombsFound };
+                                if (isBomb) newBombsFound[turnId]++;
+
+                                let nextTurn = turnId;
+                                if (newBombsFound[turnId] < 2) {
+                                    nextTurn = turnId === roomData.arena.challengerIds[0] ? roomData.arena.challengerIds[1] : roomData.arena.challengerIds[0];
+                                }
+
+                                updateRoom({
+                                    'arena.minesweeper.board': board,
+                                    'arena.minesweeper.bombsFound': newBombsFound,
+                                    'arena.minesweeper.turn': nextTurn,
+                                    'arena.minesweeper.moveCount': ms.moveCount + 1
+                                });
                             }
-
-                            updateRoom({
-                                'arena.minesweeper.board': board,
-                                'arena.minesweeper.bombsFound': newBombsFound,
-                                'arena.minesweeper.turn': nextTurn,
-                                'arena.minesweeper.moveCount': ms.moveCount + 1
-                            });
-                        }
-                    }, 1000 + Math.random() * 1000);
+                        }, 1000 + Math.random() * 1000);
+                    }
                 }
             }, [roomData]);
 
@@ -875,42 +925,56 @@
                         return; // Non far giocare i bot se stiamo passando di livello
                     }
 
-                    // 3. Logica IA BOT
+                    // 3. Logica IA BOT con SET per sicurezza anti-sovrascrittura
                     cIds.forEach(cId => {
                         const p = roomData.players[cId];
                         const currentProg = ss.progress[cId] || 0;
                         
-                        if (p && p.isBot && currentProg < ss.sequence.length) {
-                            const refKey = `simon_${cId}_${currentProg}_${ss.sequence.length}`;
+                        if (p && p.isBot && currentProg >= 0 && currentProg < ss.sequence.length) {
+                            const refKey = `simon_${roomData.arena.round}_${cId}_${currentProg}_${ss.sequence.length}`;
                             
-                            if (botMoveCountRef.current !== refKey) {
-                                botMoveCountRef.current = refKey;
+                            if (!botMoveCountRef.current.has(refKey)) {
+                                botMoveCountRef.current.add(refKey);
 
                                 setTimeout(() => {
-                                    // Rileggi dati in caso di fine round improvvisa
+                                    // Se il round è già stato chiuso da un altro perdente, blocca.
+                                    if (handledRoundRef.current === roomData.arena.round) return;
                                     if (roomData.arena.matchState !== 'WAITING_ACTION') return;
 
                                     const correctColor = ss.sequence[currentProg];
                                     
-                                    // Intelligenza: probabilità di sbagliare aumenta con la lunghezza della sequenza.
-                                    // Formula: 2% base + 3% per ogni elemento della sequenza totale attuale.
                                     const failChance = 0.02 + (ss.sequence.length * 0.03); 
                                     
                                     let chosenColor = correctColor;
                                     if (Math.random() < failChance) {
-                                        // Errore del Bot!
                                         chosenColor = (correctColor + Math.floor(Math.random() * 3) + 1) % 4;
                                     }
 
                                     if (chosenColor === correctColor) {
                                         updateRoom({ [`arena.simonsays.progress.${cId}`]: currentProg + 1 });
                                     } else {
-                                        handleLoser(cId, roomData.arena.round);
+                                        updateRoom({ [`arena.simonsays.progress.${cId}`]: -1 });
                                     }
-                                }, 700 + Math.random() * 600); // Tempo di reazione bot per premere un tasto
+                                }, 700 + Math.random() * 600); 
                             }
                         }
                     });
+                }
+            }, [roomData]);
+
+            // Host controlla se c'è un perdente nel SIMON SAYS
+            useEffect(() => {
+                if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SIMONSAYS') return;
+
+                const ss = roomData.arena.simonsays;
+                if (!ss || ss.phase !== 'PLAY') return;
+
+                const cIds = roomData.arena.challengerIds;
+
+                if (ss.progress[cIds[0]] === -1) {
+                    handleLoser(cIds[0], roomData.arena.round);
+                } else if (ss.progress[cIds[1]] === -1) {
+                    handleLoser(cIds[1], roomData.arena.round);
                 }
             }, [roomData]);
 
@@ -920,21 +984,21 @@
                 const ss = roomData.arena.simonsays;
                 
                 if (ss.phase !== 'PLAY') return;
-                if (!roomData.arena.challengerIds.includes(user.uid)) return; // Non è in gioco
+                if (!roomData.arena.challengerIds.includes(user.uid)) return; 
+
+                if (handledRoundRef.current === roomData.arena.round) return;
 
                 const myProg = ss.progress[user.uid] || 0;
-                if (myProg >= ss.sequence.length) return; // Ha già finito la sequenza di questo turno
+                if (myProg >= ss.sequence.length || myProg < 0) return;
 
-                // Feedback visivo immediato per l'utente
+                // Suono riprodotto localmente
                 setSimonLit(idx);
                 setTimeout(() => setSimonLit(null), 200);
 
                 if (idx === ss.sequence[myProg]) {
-                    // Corretto!
                     await updateRoom({ [`arena.simonsays.progress.${user.uid}`]: myProg + 1 });
                 } else {
-                    // Sbagliato, ha perso la vita
-                    handleLoser(user.uid, roomData.arena.round);
+                    await updateRoom({ [`arena.simonsays.progress.${user.uid}`]: -1 });
                 }
             };
 
@@ -942,6 +1006,7 @@
             const leaveRoom = () => {
                 if (arenaStartTimeRef.current) arenaStartTimeRef.current = null;
                 setMyRRChange(null);
+                botMoveCountRef.current.clear();
                 setRoomId(null);
                 setRoomData(null);
                 setUiState('MAIN_MENU');
@@ -1213,13 +1278,11 @@
                         if (roomData.arena.minesweeper.bombsFound[cId] >= 2) isLoser = true;
                         else isWinner = true;
                     } else if (roomData.arena.minigame === 'SIMONSAYS') {
-                        // Simon Says Winner logic handled in handleLoser trigger, 
-                        // But for visual feedback: loser is the one whose progress stopped and the round is SHOW_RESULT.
-                        // However, we don't have explicit "winner" tracking in state before removing life. Let's just trust isLoser class later if needed.
                         const myProg = roomData.arena.simonsays?.progress[cId];
                         const otherProg = roomData.arena.simonsays?.progress[roomData.arena.challengerIds[index === 0 ? 1 : 0]];
-                        if (myProg < otherProg) isLoser = true;
-                        else if (myProg > otherProg) isWinner = true;
+                        // Il perdente ufficiale di Simon Says ha un progress settato a -1!
+                        if (myProg === -1) isLoser = true;
+                        else if (otherProg === -1) isWinner = true;
                     }
                 }
 
