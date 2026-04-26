@@ -105,21 +105,47 @@
         const COMPETITIVE_BOT_NAMES = ['Kyle', 'Marta', 'Gennaro', 'Luca', 'Rosa Maria', 'Delia', 'Marissa', 'Dan', 'Gale', 'Mario', 'Paolo', 'James', 'Terra', 'Pant', 'Piedone', 'Mt.'];
 
         // --- SISTEMA DI RANKING ---
-        // Nuova progressione: Ferro +30, Bronzo +40, Argento +50, Oro +60, Platino +60, Diamante +80, Smeraldo +90, Stellare +100, Solare +100, Cosmico +100
         const RANKS = [
-            { name: "Ferro 1", minRR: 0, text: "text-slate-500", bg: "bg-slate-500", border: "border-slate-500", shadow: "shadow-none", extra: "" },
-            { name: "Ferro 2", minRR: 30, text: "text-slate-400", bg: "bg-slate-400", border: "border-slate-400", shadow: "shadow-[0_0_10px_rgba(148,163,184,0.3)]", extra: "" },
-            { name: "Ferro 3", minRR: 60, text: "text-slate-300", bg: "bg-slate-300", border: "border-slate-300", shadow: "shadow-[0_0_15px_rgba(203,213,225,0.4)]", extra: "" },
-            { name: "Bronzo", minRR: 90, text: "text-amber-700", bg: "bg-amber-700", border: "border-amber-700", shadow: "shadow-[0_0_20px_rgba(180,83,9,0.6)]", extra: "" },
-            { name: "Argento", minRR: 130, text: "text-gray-300", bg: "bg-gray-300", border: "border-gray-300", shadow: "shadow-[0_0_20px_rgba(209,213,219,0.6)]", extra: "" },
-            { name: "Oro", minRR: 180, text: "text-yellow-400", bg: "bg-yellow-400", border: "border-yellow-400", shadow: "shadow-[0_0_25px_rgba(250,204,21,0.7)]", extra: "ring-2 ring-yellow-400/30" },
-            { name: "Platino", minRR: 240, text: "text-cyan-300", bg: "bg-cyan-300", border: "border-cyan-300", shadow: "shadow-[0_0_25px_rgba(103,232,249,0.8)]", extra: "ring-2 ring-cyan-300/40" },
-            { name: "Diamante", minRR: 300, text: "text-purple-400", bg: "bg-purple-400", border: "border-purple-400", shadow: "shadow-[0_0_30px_rgba(192,132,252,0.9)]", extra: "ring-4 ring-purple-400/50" },
-            { name: "Smeraldo", minRR: 380, text: "text-emerald-400", bg: "bg-emerald-400", border: "border-emerald-400", shadow: "shadow-[0_0_35px_rgba(52,211,153,1)]", extra: "ring-4 ring-emerald-400/60" },
-            { name: "Stellare", minRR: 470, text: "text-indigo-400", bg: "bg-indigo-400", border: "border-indigo-400", shadow: "shadow-[0_0_40px_rgba(129,140,248,1)]", extra: "ring-4 ring-indigo-400/70 animate-[pulse_2s_ease-in-out_infinite]" },
-            { name: "Solare", minRR: 570, text: "text-orange-500", bg: "bg-orange-500", border: "border-orange-500", shadow: "shadow-[0_0_45px_rgba(249,115,22,1)]", extra: "ring-4 ring-orange-500/70 animate-[pulse_1.5s_ease-in-out_infinite]" },
-            { name: "Cosmico", minRR: 670, text: "text-fuchsia-500", bg: "bg-fuchsia-500", border: "border-fuchsia-500", shadow: "shadow-[0_0_50px_rgba(217,70,239,1)]", extra: "ring-4 ring-fuchsia-500/80 animate-[pulse_1s_ease-in-out_infinite]" },
-            { name: "Astrale", minRR: 770, text: "text-rose-400", bg: "bg-rose-400", border: "border-rose-400", shadow: "shadow-[0_0_60px_rgba(251,113,133,1)]", extra: "ring-4 ring-rose-400/90 animate-[pulse_0.5s_ease-in-out_infinite]" }
+            // Ferro (+30 RR)
+            { name: "Ferro I", minRR: 0, text: "text-slate-500", bg: "bg-slate-500", border: "border-slate-500", shadow: "shadow-none", extra: "" },
+            { name: "Ferro II", minRR: 30, text: "text-slate-400", bg: "bg-slate-400", border: "border-slate-400", shadow: "shadow-[0_0_5px_rgba(148,163,184,0.3)]", extra: "" },
+            { name: "Ferro III", minRR: 60, text: "text-slate-300", bg: "bg-slate-300", border: "border-slate-300", shadow: "shadow-[0_0_10px_rgba(203,213,225,0.4)]", extra: "" },
+            
+            // Bronzo (+40 RR)
+            { name: "Bronzo I", minRR: 90, text: "text-amber-800", bg: "bg-amber-800", border: "border-amber-800", shadow: "shadow-[0_0_10px_rgba(146,64,14,0.5)]", extra: "" },
+            { name: "Bronzo II", minRR: 130, text: "text-amber-700", bg: "bg-amber-700", border: "border-amber-700", shadow: "shadow-[0_0_15px_rgba(180,83,9,0.5)]", extra: "" },
+            { name: "Bronzo III", minRR: 170, text: "text-amber-600", bg: "bg-amber-600", border: "border-amber-600", shadow: "shadow-[0_0_20px_rgba(217,119,6,0.6)]", extra: "" },
+            
+            // Argento (+50 RR)
+            { name: "Argento I", minRR: 210, text: "text-gray-400", bg: "bg-gray-400", border: "border-gray-400", shadow: "shadow-[0_0_15px_rgba(156,163,175,0.5)]", extra: "" },
+            { name: "Argento II", minRR: 260, text: "text-gray-300", bg: "bg-gray-300", border: "border-gray-300", shadow: "shadow-[0_0_20px_rgba(209,213,219,0.6)]", extra: "" },
+            { name: "Argento III", minRR: 310, text: "text-gray-200", bg: "bg-gray-200", border: "border-gray-200", shadow: "shadow-[0_0_25px_rgba(229,231,235,0.7)]", extra: "" },
+            
+            // Oro (+60 RR)
+            { name: "Oro I", minRR: 360, text: "text-yellow-500", bg: "bg-yellow-500", border: "border-yellow-500", shadow: "shadow-[0_0_20px_rgba(234,179,8,0.6)]", extra: "ring-1 ring-yellow-500/20" },
+            { name: "Oro II", minRR: 420, text: "text-yellow-400", bg: "bg-yellow-400", border: "border-yellow-400", shadow: "shadow-[0_0_25px_rgba(250,204,21,0.7)]", extra: "ring-2 ring-yellow-400/30" },
+            { name: "Oro III", minRR: 480, text: "text-yellow-300", bg: "bg-yellow-300", border: "border-yellow-300", shadow: "shadow-[0_0_30px_rgba(253,224,71,0.8)]", extra: "ring-2 ring-yellow-300/40" },
+            
+            // Platino (+60 RR)
+            { name: "Platino I", minRR: 540, text: "text-cyan-400", bg: "bg-cyan-400", border: "border-cyan-400", shadow: "shadow-[0_0_25px_rgba(34,211,238,0.7)]", extra: "ring-2 ring-cyan-400/30" },
+            { name: "Platino II", minRR: 600, text: "text-cyan-300", bg: "bg-cyan-300", border: "border-cyan-300", shadow: "shadow-[0_0_30px_rgba(103,232,249,0.8)]", extra: "ring-2 ring-cyan-300/40" },
+            { name: "Platino III", minRR: 660, text: "text-cyan-200", bg: "bg-cyan-200", border: "border-cyan-200", shadow: "shadow-[0_0_35px_rgba(165,243,252,0.9)]", extra: "ring-3 ring-cyan-200/50" },
+            
+            // Diamante (+80 RR)
+            { name: "Diamante I", minRR: 720, text: "text-purple-500", bg: "bg-purple-500", border: "border-purple-500", shadow: "shadow-[0_0_30px_rgba(168,85,247,0.7)]", extra: "ring-2 ring-purple-500/40" },
+            { name: "Diamante II", minRR: 800, text: "text-purple-400", bg: "bg-purple-400", border: "border-purple-400", shadow: "shadow-[0_0_35px_rgba(192,132,252,0.8)]", extra: "ring-3 ring-purple-400/50" },
+            { name: "Diamante III", minRR: 880, text: "text-purple-300", bg: "bg-purple-300", border: "border-purple-300", shadow: "shadow-[0_0_40px_rgba(216,180,254,0.9)]", extra: "ring-4 ring-purple-300/60" },
+            
+            // Smeraldo e oltre (+100 RR)
+            { name: "Smeraldo I", minRR: 960, text: "text-emerald-500", bg: "bg-emerald-500", border: "border-emerald-500", shadow: "shadow-[0_0_35px_rgba(16,185,129,0.8)]", extra: "ring-3 ring-emerald-500/50" },
+            { name: "Smeraldo II", minRR: 1060, text: "text-emerald-400", bg: "bg-emerald-400", border: "border-emerald-400", shadow: "shadow-[0_0_40px_rgba(52,211,153,0.9)]", extra: "ring-4 ring-emerald-400/60" },
+            { name: "Smeraldo III", minRR: 1160, text: "text-emerald-300", bg: "bg-emerald-300", border: "border-emerald-300", shadow: "shadow-[0_0_45px_rgba(110,231,183,1)]", extra: "ring-4 ring-emerald-300/70" },
+            
+            // Apex Ranks (Unici)
+            { name: "Stellare", minRR: 1260, text: "text-indigo-400", bg: "bg-indigo-400", border: "border-indigo-400", shadow: "shadow-[0_0_45px_rgba(129,140,248,1)]", extra: "ring-4 ring-indigo-400/70 animate-[pulse_2s_ease-in-out_infinite]" },
+            { name: "Solare", minRR: 1360, text: "text-orange-500", bg: "bg-orange-500", border: "border-orange-500", shadow: "shadow-[0_0_50px_rgba(249,115,22,1)]", extra: "ring-4 ring-orange-500/80 animate-[pulse_1.5s_ease-in-out_infinite]" },
+            { name: "Cosmico", minRR: 1460, text: "text-fuchsia-500", bg: "bg-fuchsia-500", border: "border-fuchsia-500", shadow: "shadow-[0_0_55px_rgba(217,70,239,1)]", extra: "ring-4 ring-fuchsia-500/90 animate-[pulse_1s_ease-in-out_infinite]" },
+            { name: "Astrale", minRR: 1560, text: "text-rose-400", bg: "bg-rose-400", border: "border-rose-400", shadow: "shadow-[0_0_65px_rgba(251,113,133,1)]", extra: "ring-4 ring-rose-400/100 animate-[pulse_0.5s_ease-in-out_infinite]" }
         ];
 
         function getRank(rr) {
@@ -251,7 +277,7 @@
             { name: "Anastasia", img: "https://i.pinimg.com/736x/56/e5/52/56e552315c56b809d3978914d294ad34.jpg" },
             { name: "Robot Boy", img: "https://i.pinimg.com/736x/91/d3/42/91d342072cae0214447bf8c362d9e02e.jpg" },
             { name: "Timmy", img: "https://i.pinimg.com/736x/91/de/1b/91de1b5b1897a71a36957191623af776.jpg" },
-            { name: "Cosmo", img: "https://i.pinimg.com/1200x/3e/66/72/3e667202130fb974cfecb27b3f46c64a.jpg" },
+            { name: "Cosmo", img: "https://i.汇img.com/1200x/3e/66/72/3e667202130fb974cfecb27b3f46c64a.jpg" },
             { name: "Wanda", img: "https://i.pinimg.com/1200x/48/2e/c9/482ec974f07d0e9afdc462263f6235f9.jpg" },
             { name: "Pery", img: "https://i.pinimg.com/736x/94/4e/1b/944e1b48effe0ad848788a949aed13c5.jpg" },
             { name: "Hazel", img: "https://i.pinimg.com/736x/9a/e2/34/9ae2349f370a6455bd694d5d160457d8.jpg" },
@@ -1199,7 +1225,6 @@
 
             // --- LOGICA SPAM CLICK ---
             
-            // Host Controller per Timer e Bot
             useEffect(() => {
                 if (!isHost || !roomData || roomData.state !== 'ARENA' || roomData.arena.matchState !== 'WAITING_ACTION' || roomData.arena.minigame !== 'SPAMCLICK') return;
                 const sc = roomData.arena.spamclick;
@@ -1221,9 +1246,8 @@
                         cIds.forEach(cId => {
                             const p = roomData.players[cId];
                             if (p && p.isBot) {
-                                const currentScore = sc.scores[cId] || 0;
-                                const clicksThisSec = Math.floor(Math.random() * 4) + 6; // 6-9 click al sec
-                                updates[`arena.spamclick.scores.${cId}`] = currentScore + clicksThisSec;
+                                const clicksThisSec = Math.floor(Math.random() * 4) + 6; 
+                                updates[`arena.spamclick.scores.${cId}`] = increment(clicksThisSec);
                             }
                         });
 
@@ -1255,9 +1279,8 @@
                         setTimeout(() => handleLoser(loserId, roomData.arena.round), 2500);
                     }
                 }
-            }, [roomData]);
+            }, [isHost, roomData?.state, roomData?.arena?.matchState, roomData?.arena?.minigame, roomData?.arena?.spamclick?.phase, roomData?.arena?.spamclick?.timeLeft]);
 
-            // Sync Clicks per il Giocatore (Background Loop)
             useEffect(() => {
                 isPlayingSpamClickRef.current = (
                     roomData?.arena?.minigame === 'SPAMCLICK' && 
